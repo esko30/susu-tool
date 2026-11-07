@@ -16,13 +16,22 @@ enum class CalendarRange(val label: String) {
 
 /** Настройки и учётные данные (в зашифрованном хранилище Android Keystore). */
 class Prefs(context: Context) {
-    private val sp: SharedPreferences = EncryptedSharedPreferences.create(
-        context,
-        "susu_prefs",
-        MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-    )
+    private val sp: SharedPreferences = shared(context.applicationContext)
+
+    private companion object {
+        @Volatile private var cached: SharedPreferences? = null
+
+        /** Открытие зашифрованного хранилища дорогое (Keystore), поэтому делаем его один раз на процесс. */
+        fun shared(app: Context): SharedPreferences = cached ?: synchronized(this) {
+            cached ?: EncryptedSharedPreferences.create(
+                app,
+                "susu_prefs",
+                MasterKey.Builder(app).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+            ).also { cached = it }
+        }
+    }
 
     var login: String
         get() = sp.getString("login", "").orEmpty()
@@ -86,6 +95,19 @@ class Prefs(context: Context) {
         get() = sp.getString("soundGrades", "arpeggio").orEmpty()
         set(v) = sp.edit { putString("soundGrades", v) }
 
+    /** Время последнего просмотра истории — по нему считается счётчик на колокольчике. */
+    var historySeen: Long
+        get() = sp.getLong("historySeen", 0)
+        set(v) = sp.edit { putLong("historySeen", v) }
+
+    var onboardingDone: Boolean
+        get() = sp.getBoolean("onboardingDone", false)
+        set(v) = sp.edit { putBoolean("onboardingDone", v) }
+
+    var tourDone: Boolean
+        get() = sp.getBoolean("tourDone", false)
+        set(v) = sp.edit { putBoolean("tourDone", v) }
+
     var autoUpdateCheck: Boolean
         get() = sp.getBoolean("autoUpdateCheck", true)
         set(v) = sp.edit { putBoolean("autoUpdateCheck", v) }
@@ -94,9 +116,19 @@ class Prefs(context: Context) {
         get() = sp.getLong("lastUpdateCheck", 0)
         set(v) = sp.edit { putLong("lastUpdateCheck", v) }
 
+    /** Версия, «что нового» которой уже показали. */
+    var whatsNewSeen: String
+        get() = sp.getString("whatsNewSeen", "").orEmpty()
+        set(v) = sp.edit { putString("whatsNewSeen", v) }
+
     var skippedVersion: String
         get() = sp.getString("skippedVersion", "").orEmpty()
         set(v) = sp.edit { putString("skippedVersion", v) }
+
+    /** Вид расписания: false — лента, true — неделя сеткой. */
+    var weekView: Boolean
+        get() = sp.getBoolean("weekView", false)
+        set(v) = sp.edit { putBoolean("weekView", v) }
 
     var lastStatus: String
         get() = sp.getString("lastStatus", "").orEmpty()
@@ -116,8 +148,7 @@ class Prefs(context: Context) {
             typeTag = sp.getBoolean("d_tag", true),
             gradient = sp.getBoolean("d_gradient", true),
             compact = sp.getBoolean("d_compact", false),
-            passSwipe = sp.getBoolean("d_passSwipe", true),
-            passHint = sp.getBoolean("d_passHint", true),
+            windows = sp.getBoolean("d_windows", true),
             theme = sp.getInt("d_theme", 0),
         )
         set(v) = sp.edit {
@@ -133,8 +164,7 @@ class Prefs(context: Context) {
             putBoolean("d_tag", v.typeTag)
             putBoolean("d_gradient", v.gradient)
             putBoolean("d_compact", v.compact)
-            putBoolean("d_passSwipe", v.passSwipe)
-            putBoolean("d_passHint", v.passHint)
+            putBoolean("d_windows", v.windows)
             putInt("d_theme", v.theme)
         }
 

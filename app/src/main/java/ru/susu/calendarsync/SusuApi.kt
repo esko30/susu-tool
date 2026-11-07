@@ -138,7 +138,7 @@ object SusuApi {
         return text
     }
 
-    private fun parseLesson(o: JSONObject): Lesson? {
+    internal fun parseLesson(o: JSONObject): Lesson? {
         val date = o.str("eventDate").take(10)
         val begin = o.str("beginTime").take(5)
         val end = o.str("endTime").take(5)

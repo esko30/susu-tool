@@ -74,6 +74,10 @@ object Notifier {
             Triple(CHANNEL_SCHEDULE, "Изменения в расписании", "Переносы, отмены и новые занятия"),
             Triple(CHANNEL_GRADES, "Оценки и КРМ", "Новые контрольные мероприятия, баллы и итоговые оценки"),
         )
+        if (nm.getNotificationChannel(Planner.CHANNEL) == null) {
+            nm.createNotificationChannel(NotificationChannel(Planner.CHANNEL, "Напоминания планера", NotificationManager.IMPORTANCE_HIGH)
+                .apply { description = "Напоминания о контрольных, коллоквиумах и других записях к парам" })
+        }
         for ((base, name, desc) in specs) {
             val id = channelId(context, base)
             nm.notificationChannels.filter { (it.id == base || it.id.startsWith(base + "_")) && it.id != id }
@@ -107,7 +111,7 @@ object Notifier {
             context, id, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 
-        val lines = changes.map { "${it.kind.label}: ${it.title} — ${it.text}" }
+        val lines = changes.map { "${it.kind.label}: ${it.title}. ${it.text}" }
         val style = NotificationCompat.InboxStyle()
         lines.take(6).forEach(style::addLine)
         if (lines.size > 6) style.setSummaryText("и ещё ${lines.size - 6}")

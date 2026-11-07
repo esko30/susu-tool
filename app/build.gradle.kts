@@ -24,8 +24,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // При каждом выпуске увеличивайте оба значения; тег релиза на GitHub — v<versionName>.
-        versionCode = 3
-        versionName = "2.1"
+        versionCode = 4
+        versionName = "2.2"
         // Репозиторий GitHub, где приложение ищет обновления (владелец/имя).
         buildConfigField("String", "UPDATE_REPO", "\"${project.findProperty("updateRepo") ?: ""}\"")
     }
@@ -51,6 +51,10 @@ android {
         }
     }
 
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     buildFeatures {
         viewBinding = true
         buildConfig = true
@@ -73,4 +77,9 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("com.google.zxing:core:3.5.3")
+    implementation("androidx.viewpager2:viewpager2:1.1.0")
+
+    // Тесты логики без устройства: прогноз, разбор ответов портала, напоминания, окна.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

@@ -136,7 +136,7 @@ fun Context.card(vararg children: View, onClick: (() -> Unit)? = null): Material
 
 /** Выпадающий выбор: кнопка с текущим значением, по нажатию — диалог со списком. */
 fun Context.spinner(items: List<String>, selected: Int, onSelect: (Int) -> Unit): View {
-    val current = selected.coerceIn(0, (items.size - 1).coerceAtLeast(0))
+    var current = selected.coerceIn(0, (items.size - 1).coerceAtLeast(0))
     return MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
         text = items.getOrNull(current).orEmpty()
         isAllCaps = false
@@ -158,7 +158,12 @@ fun Context.spinner(items: List<String>, selected: Int, onSelect: (Int) -> Unit)
             MaterialAlertDialogBuilder(context)
                 .setSingleChoiceItems(items.toTypedArray(), current) { d, which ->
                     d.dismiss()
-                    if (which != current) onSelect(which)
+                    if (which != current) {
+                        // Кнопка сразу показывает выбранный вариант, даже если экран не перестраивается.
+                        current = which
+                        text = items[which]
+                        onSelect(which)
+                    }
                 }
                 .show()
         }

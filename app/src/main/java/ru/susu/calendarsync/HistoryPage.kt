@@ -21,9 +21,16 @@ class HistoryPage : Page() {
         val ctx = requireContext()
         val log = ChangeLog(ctx)
         val root = ctx.vertical(16)
-        root.addView(ctx.title("История изменений"))
+        root.addView(ctx.textButton("‹ Назад") { parentFragmentManager.popBackStack() }.apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+        })
+        root.addView(ctx.title("Изменения"))
 
         val all = log.load()
+        // Открыли историю — всё просмотрено, счётчик на колокольчике обнуляется.
+        all.maxOfOrNull { it.timestamp }?.let { Prefs(ctx).historySeen = maxOf(Prefs(ctx).historySeen, it) }
         val sets = all.filter {
             val grades = it.source.startsWith("Оценки")
             filter == 0 || (filter == 1 && !grades) || (filter == 2 && grades)
@@ -37,8 +44,8 @@ class HistoryPage : Page() {
         }
         if (sets.isEmpty()) {
             root.addView(ctx.secondary(
-                "Изменений пока не было. Когда в отслеживаемом расписании что-то поменяется, появится новое КРМ " +
-                    "или изменится оценка, здесь появится список, а на телефон придёт уведомление."
+                "Изменений пока не было. Здесь появятся переносы и отмены пар, новые КРМ и оценки, " +
+                    "а о каждом изменении придёт уведомление."
             ).apply { setPadding(0, ctx.dp(12), 0, 0) })
         }
 

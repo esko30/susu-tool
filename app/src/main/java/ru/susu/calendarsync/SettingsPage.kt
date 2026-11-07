@@ -72,12 +72,24 @@ class SettingsPage : Page() {
         root.addView(ctx.section("Внешний вид"))
         root.addView(ctx.card(
             ctx.text("Внешний вид  ›", 16f, bold = true),
-            ctx.secondary("Тема, карточки пар, прогресс и анимации, пропуск и подсказка"),
+            ctx.secondary("Тема, карточки пар, прогресс и анимации"),
         ) { main.openAppearance() })
+
+        // Поддержка проекта.
+        root.addView(ctx.section("Поддержать SUSU Tool"))
+        root.addView(ctx.card(
+            ctx.text("Пожертвовать  ›", 16f, bold = true),
+            ctx.secondary("Если приложение помогает, можно поддержать разработку переводом через СБП."),
+        ) {
+            runCatching {
+                startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(DONATE_URL)))
+            }
+        })
 
         // Календарь.
         root.addView(ctx.section("Календарь телефона"))
-        root.addView(ctx.secondary("В календарь попадают расписания с включённым «Добавлять в календарь» (вкладка «Расписание»). Для каждого создаётся отдельный календарь «SUSU Tool — …»."))
+        root.addView(ctx.secondary("В календарь попадают расписания, у которых включено «Добавлять в календарь». " +
+            "Для каждого создаётся отдельный календарь SUSU Tool."))
         root.addView(ctx.text("Промежуток синхронизации", 14f).apply { setPadding(0, ctx.dp(10), 0, 0) })
         val ranges = CalendarRange.values().toList()
         root.addView(ctx.spinner(ranges.map { it.label }, ranges.indexOf(prefs.calendarRange)) { i ->
@@ -88,7 +100,7 @@ class SettingsPage : Page() {
         })
         if (prefs.calendarRange == CalendarRange.CUSTOM) {
             val w = DateWindow.of(prefs)
-            root.addView(ctx.secondary("${w.from?.format(dateFmt) ?: "…"} — ${w.to?.format(dateFmt) ?: "…"}"))
+            root.addView(ctx.secondary("с ${w.from?.format(dateFmt) ?: "…"} по ${w.to?.format(dateFmt) ?: "…"}"))
             root.addView(ctx.textButton("Изменить даты") { pickRange(prefs) })
         }
         root.addView(ctx.text("Напоминание перед занятием", 14f).apply { setPadding(0, ctx.dp(10), 0, 0) })
@@ -105,7 +117,7 @@ class SettingsPage : Page() {
             SyncWorker.schedule(ctx.applicationContext)
         })
         root.addView(ctx.switch("Уведомлять о новых КРМ и изменениях оценок", prefs.monitorGrades) { prefs.monitorGrades = it })
-        root.addView(ctx.secondary("За изменениями в расписаниях следят те, у которых включено «Следить за изменениями» на вкладке «Расписание»."))
+        root.addView(ctx.secondary("Уведомления о переносах приходят по расписаниям, у которых включено «Следить за изменениями»."))
 
         // Звуки уведомлений: встроенные, системный, без звука или любой из телефона. При выборе звук проигрывается.
         fun soundPicker(label: String, current: String, save: (String) -> Unit) {
@@ -126,10 +138,23 @@ class SettingsPage : Page() {
         soundPicker("Звук: изменения в расписании", prefs.soundSchedule) { prefs.soundSchedule = it }
         soundPicker("Звук: оценки и КРМ", prefs.soundGrades) { prefs.soundGrades = it }
 
+        // Помощь: тур и приветствие можно открыть снова.
+        root.addView(ctx.section("Помощь"))
+        val help = ctx.horizontal()
+        help.addView(ctx.button("Тур по приложению", outlined = true) { main.startTour() }.weight())
+        help.addView(View(ctx).apply { layoutParams = android.widget.LinearLayout.LayoutParams(ctx.dp(8), 1) })
+        help.addView(ctx.button("Приветствие", outlined = true) { main.showOnboarding() }.weight())
+        root.addView(help)
+
         // Обновления через GitHub Releases.
         root.addView(ctx.section("Обновления"))
         root.addView(ctx.secondary("Установлена версия ${BuildConfig.VERSION_NAME}" +
             if (updateStatus.isNotBlank()) "\n$updateStatus" else ""))
+        root.addView(ctx.button("Что нового", outlined = true) { WhatsNew.showAll(ctx) }.apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = ctx.dp(4) }
+        })
         root.addView(ctx.switch("Проверять обновления при запуске", prefs.autoUpdateCheck) { prefs.autoUpdateCheck = it })
         root.addView(ctx.button("Проверить обновления", outlined = true) {
             updateStatus = "Проверяю…"
@@ -145,11 +170,11 @@ class SettingsPage : Page() {
         // О приложении и данных.
         root.addView(ctx.section("О приложении и данных"))
         root.addView(ctx.card(
-            ctx.text("SUSU Tool — неофициальное приложение", 15f, bold = true),
+            ctx.text("SUSU Tool: неофициальное приложение", 15f, bold = true),
             ctx.secondary(
                 "Приложение работает через те же официальные запросы, что и ЮУрГУ-Онлайн (online.susu.ru): " +
-                    "вход, расписание, поиск, успеваемость и пропуск. Других серверов у приложения нет — " +
-                    "данные никуда, кроме online.susu.ru, не передаются, аналитики и рекламы нет.\n\n" +
+                    "вход, расписание, поиск, успеваемость и пропуск. Других серверов у приложения нет. " +
+                    "Данные не передаются никуда, кроме online.susu.ru. Аналитики и рекламы нет.\n\n" +
                     "Все права на систему ЮУрГУ-Онлайн и её данные принадлежат ФГАОУ ВО «ЮУрГУ (НИУ)». " +
                     "Разработчик SUSU Tool не связан с университетом и ни на что не претендует.", 13f,
             ).apply { setPadding(0, ctx.dp(6), 0, 0); setLineSpacing(0f, 1.15f) },
@@ -157,32 +182,21 @@ class SettingsPage : Page() {
         root.addView(ctx.card(
             ctx.text("Что хранится на телефоне", 15f, bold = true),
             ctx.secondary(
-                "• Логин и пароль — в зашифрованном хранилище Android (ключ в Android Keystore), чтобы входить автоматически.\n" +
-                    "• Сохранённые расписания, оценки и баллы КРМ, история изменений — в личной папке приложения, " +
+                "• Логин и пароль хранятся в зашифрованном хранилище Android (ключ в Android Keystore), чтобы входить автоматически.\n" +
+                    "• Сохранённые расписания, оценки, баллы КРМ и история изменений лежат в личной папке приложения, " +
                     "недоступной другим приложениям.\n" +
-                    "• Код пропуска — в зашифрованном хранилище, чтобы пропуск открывался без интернета.\n" +
-                    "• Занятия — в отдельных локальных календарях «SUSU Tool — …» на телефоне, для расписаний с включённым «Добавлять в календарь». Они не синхронизируются с Google.\n\n" +
-                    "Всё удаляется кнопкой «Выйти и удалить все данные и календари» или при удалении приложения.", 13f,
+                    "• Код пропуска хранится в зашифрованном виде, чтобы пропуск открывался без интернета.\n" +
+                    "• Занятия попадают в отдельные локальные календари SUSU Tool на телефоне, только для расписаний " +
+                    "с включённым «Добавлять в календарь». С Google они не синхронизируются.\n\n" +
+                    "Всё удаляется кнопкой «Выйти и удалить все данные и календари» или вместе с приложением.", 13f,
             ).apply { setPadding(0, ctx.dp(6), 0, 0); setLineSpacing(0f, 1.15f) },
         ))
-
-        // Поддержка проекта.
-        root.addView(ctx.section("Поддержать SUSU Tool"))
-        root.addView(ctx.secondary("Если приложение помогает — можно поддержать разработку переводом через СБП."))
-        root.addView(ctx.button("Пожертвовать") {
-            runCatching {
-                startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(DONATE_URL)))
-            }
-        }.apply {
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { topMargin = ctx.dp(8) }
-        })
 
         // Выход.
         root.addView(ctx.section("Выход"))
         root.addView(ctx.textButton("Выйти и удалить все данные и календари") { confirmReset() })
         root.addView(ctx.secondary("SUSU Tool · версия ${BuildConfig.VERSION_NAME}").apply { setPadding(0, ctx.dp(16), 0, 0) })
+
         return ctx.scroll(root)
     }
 
@@ -263,6 +277,7 @@ class SettingsPage : Page() {
                     Store(app).clearAll()
                     GradesStore(app).clearAll()
                     ChangeLog(app).clear()
+                    Planner.clear(app)
                     Prefs(app).clear()
                     Session.reset()
                 }) {

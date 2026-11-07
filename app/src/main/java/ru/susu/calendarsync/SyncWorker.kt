@@ -21,10 +21,12 @@ import java.util.concurrent.TimeUnit
 
 object Syncer {
     const val TAB_SCHEDULE = 0
-    const val TAB_SEARCH = 1
-    const val TAB_GRADES = 2
-    const val TAB_HISTORY = 3
+    const val TAB_PLANNER = 1
+    const val TAB_PASS = 2
+    const val TAB_GRADES = 3
     const val TAB_SETTINGS = 4
+    /** Не вкладка: экран «История изменений», открывается колокольчиком и из уведомлений. */
+    const val TAB_HISTORY = 10
 
     /**
      * Загружает одно расписание, сравнивает с кэшем (если включено наблюдение — пишет историю и
@@ -106,7 +108,7 @@ object Syncer {
 
         val time = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("ru")).format(Date())
         buildString {
-            append("Синхронизация $time — ${auth.displayName}\nЗанятий в моём расписании: $lessonsCount")
+            append("Синхронизация в $time, ${auth.displayName}\nЗанятий в моём расписании: $lessonsCount")
             if (errors.isNotEmpty()) append("\nОшибки:\n").append(errors.joinToString("\n"))
         }
     }

@@ -16,9 +16,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.susu.calendarsync.databinding.ActivityMainBinding
-import java.time.DayOfWeek
-import java.time.LocalDate
-import java.time.temporal.TemporalAdjusters
 
 class MainActivity : AppCompatActivity() {
 
@@ -30,7 +27,6 @@ class MainActivity : AppCompatActivity() {
     var selectedUid: String? = null
     /** Расписания, уже обновлённые с момента запуска приложения. */
     val refreshedThisLaunch = HashSet<String>()
-    var week: LocalDate = LocalDate.now(CalendarSync.SUSU_ZONE).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
 
     private var afterPermissions: (() -> Unit)? = null
     private val permissionLauncher = registerForActivityResult(
@@ -40,7 +36,35 @@ class MainActivity : AppCompatActivity() {
         afterPermissions = null
     }
 
-    private val tabs = listOf(R.id.nav_schedule, R.id.nav_search, R.id.nav_grades, R.id.nav_history, R.id.nav_settings)
+    // Фото для планера: системный выбор фото (без разрешений) и камера.
+    private var photoCallback: ((List<android.net.Uri>) -> Unit)? = null
+    private var cameraUri: android.net.Uri? = null
+    private val photoPicker = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(6),
+    ) { uris -> photoCallback?.invoke(uris); photoCallback = null }
+    private val camera = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.TakePicture(),
+    ) { ok -> val u = cameraUri; if (ok && u != null) photoCallback?.invoke(listOf(u)); photoCallback = null }
+
+    fun pickPhotos(onPicked: (List<android.net.Uri>) -> Unit) {
+        photoCallback = onPicked
+        photoPicker.launch(androidx.activity.result.PickVisualMediaRequest(
+            androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly,
+        ))
+    }
+
+    fun takePhoto(onTaken: (List<android.net.Uri>) -> Unit) {
+        val f = java.io.File(java.io.File(cacheDir, "photos").apply { mkdirs() }, "shot_${System.currentTimeMillis()}.jpg")
+        val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.files", f)
+        cameraUri = uri
+        photoCallback = onTaken
+        runCatching { camera.launch(uri) }.onFailure {
+            photoCallback = null
+            android.widget.Toast.makeText(this, "Не удалось открыть камеру", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private val tabs = listOf(R.id.nav_schedule, R.id.nav_planner, R.id.nav_pass, R.id.nav_grades, R.id.nav_settings)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(AppearancePage.nightMode(Prefs(this).display.theme))
@@ -58,109 +82,85 @@ class MainActivity : AppCompatActivity() {
             showPage(tabs.indexOf(item.itemId))
             true
         }
-        val start = intent.getIntExtra(Notifier.EXTRA_TAB, -1).takeIf { it >= 0 }
+        val target = intent.getIntExtra(Notifier.EXTRA_TAB, -1).takeIf { it >= 0 }
+        val start = target?.takeIf { it != Syncer.TAB_HISTORY }
             ?: if (Prefs(this).hasCredentials) Syncer.TAB_SCHEDULE else Syncer.TAB_SETTINGS
         if (savedInstanceState == null) {
             showTab(start)
-            showPassHint()
-            Updater.autoCheck(this, lifecycleScope)
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        refreshPassSwipe()
-    }
-
-    fun refreshPassSwipe() {
-        passSwipeEnabled = Prefs(this).let { it.hasCredentials && it.display.passSwipe }
-    }
-
-    // ---- Пропуск: смахивание слева направо и подсказка при запуске ----
-
-    private var passSwipeEnabled = false
-    private var swipeX = 0f
-    private var swipeY = 0f
-    private var swipeTracking = false
-
-    fun openPass() = PassTicket.show(this, lifecycleScope)
-
-    /**
-     * Горизонтальный жест слева направо в любом месте экрана открывает пропуск.
-     * Касания у самого края не отслеживаем — там системный жест «Назад».
-     */
-    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
-        if (passSwipeEnabled) when (ev.actionMasked) {
-            android.view.MotionEvent.ACTION_DOWN -> {
-                swipeX = ev.x
-                swipeY = ev.y
-                swipeTracking = ev.x > dp(28)
-            }
-            android.view.MotionEvent.ACTION_MOVE -> if (swipeTracking) {
-                val dx = ev.x - swipeX
-                val dy = kotlin.math.abs(ev.y - swipeY)
-                if (dy > dp(24) && dy > kotlin.math.abs(dx)) swipeTracking = false
-                else if (dx > dp(110) && dy < dx * 0.5f) {
-                    swipeTracking = false
-                    // Отменяем касание для ленты, чтобы она не прокрутилась и ничего не нажалось.
-                    val cancel = android.view.MotionEvent.obtain(ev).apply { action = android.view.MotionEvent.ACTION_CANCEL }
-                    super.dispatchTouchEvent(cancel)
-                    cancel.recycle()
-                    openPass()
-                    return true
-                }
+            if (target == Syncer.TAB_HISTORY) b.root.post { openHistory() }
+            if (!Prefs(this).onboardingDone) b.root.post { Onboarding.show(this) }
+            else {
+                b.root.post { WhatsNew.showIfUpdated(this) }
+                Updater.autoCheck(this, lifecycleScope)
+                runCatching { NowWidget.update(this) }
             }
         }
-        return super.dispatchTouchEvent(ev)
     }
 
-    /** Ярлычок «Пропуск → проведите» у левого края: плавно появляется на 5 секунд при запуске. */
-    private fun showPassHint() {
-        val prefs = Prefs(this)
-        if (!prefs.hasCredentials || !prefs.display.passSwipe || !prefs.display.passHint) return
+    fun openPass() = showTab(Syncer.TAB_PASS)
+
+    /** Тур по приложению: открываем расписание и по очереди подсвечиваем его элементы и вкладки. */
+    fun startTour() {
+        showTab(Syncer.TAB_SCHEDULE)
         val decor = window.decorView as android.widget.FrameLayout
-        val hint = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(dp(14), dp(10), dp(16), dp(10))
-            background = android.graphics.drawable.GradientDrawable().apply {
-                val r = dp(18).toFloat()
-                cornerRadii = floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f)
-                setColor(color(com.google.android.material.R.attr.colorPrimaryContainer))
-            }
-            elevation = dp(6).toFloat()
-            addView(text("Пропуск  →", 15f, bold = true, colorAttr = com.google.android.material.R.attr.colorOnPrimaryContainer))
-            addView(text("проведите вправо", 12f, colorAttr = com.google.android.material.R.attr.colorOnPrimaryContainer))
-            alpha = 0f
-            translationX = -dp(40).toFloat()
-            setOnClickListener { openPass() }
-        }
-        decor.addView(hint, android.widget.FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-            android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL,
-        ))
-        hint.animate().alpha(1f).translationX(0f).setStartDelay(600).setDuration(350).withEndAction {
-            // Лёгкое «подталкивание» вправо — намёк на жест.
-            hint.animate().translationX(dp(10).toFloat()).setDuration(300).withEndAction {
-                hint.animate().translationX(0f).setDuration(300).start()
-            }.start()
-        }.start()
-        hint.postDelayed({
-            hint.animate().alpha(0f).translationX(-dp(40).toFloat()).setDuration(400)
-                .withEndAction { decor.removeView(hint) }.start()
-        }, 5600)
+        fun tagged(tag: String): () -> View? = { decor.findViewWithTag(tag) }
+        fun tab(id: Int): () -> View? = { b.bottomNav.findViewById(id) }
+        val steps = listOf(
+            TourStep(tagged("tour_selector"), "Выбор расписания",
+                "Своё расписание, сохранённые группы, преподаватели и аудитории, а также открытые из поиска."),
+            TourStep(tagged("tour_search"), "Поиск",
+                "Группы, преподаватели и аудитории. Результаты появляются по мере ввода, нажмите на результат, чтобы открыть расписание."),
+            TourStep(tagged("tour_today"), "Сегодня", "Вернуться к сегодняшнему дню из любого места ленты."),
+            TourStep(tagged("tour_history"), "Изменения",
+                "Что изменилось в расписаниях и оценках. Число на колокольчике показывает новые изменения с прошлого просмотра."),
+            TourStep(tagged("tour_more"), "Меню расписания",
+                "Обновить, расписание звонков, вид «неделя», уведомления о переносах, перенос пар в календарь, сохранить или удалить расписание."),
+            TourStep(tagged("tour_card"), "Карточка пары",
+                "Нажмите на пару, чтобы отметить контрольную или коллоквиум и поставить напоминание. " +
+                    "Нажатие на аудиторию, преподавателя или группу открывает их расписание."),
+            TourStep(tab(R.id.nav_planner), "Планер", "Все записи по дням. Отметьте выполненное или поправьте напоминание."),
+            TourStep(tab(R.id.nav_grades), "Оценки",
+                "Рейтинг по дисциплинам. Откройте дисциплину и нажмите «Что если», чтобы задать будущие баллы за КРМ и посмотреть прогноз оценки."),
+            TourStep(tab(R.id.nav_pass), "Пропуск",
+                "QR-код пропуска с максимальной яркостью."),
+            TourStep(tab(R.id.nav_settings), "Настройки", "Вход, календарь, уведомления и звуки, внешний вид, обновления."),
+        )
+        // Даём ленте открыться и прокрутиться к сегодняшнему дню.
+        b.root.postDelayed({
+            decor.addView(TourOverlay(this, steps) { Prefs(this).tourDone = true }, android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+            ))
+        }, 600)
     }
 
-    fun openAppearance() {
+    fun showOnboarding() = Onboarding.show(this)
+
+    /** «История изменений» — вложенный экран поверх текущей вкладки. */
+    fun openHistory() = openNested(HistoryPage(), "history")
+
+    fun openAppearance() = openNested(AppearancePage(), "appearance")
+
+    /** Экран дисциплины с «Что если». */
+    fun openSubject(term: Int, key: String) = openNested(SubjectPage.of(term, key), "subject")
+
+    /** «Что если» — отдельный экран поверх дисциплины; при выходе введённые баллы теряются. */
+    fun openWhatIf(term: Int, key: String) = openNested(SubjectPage.of(term, key, whatIf = true), "whatif")
+
+    private fun openNested(page: Fragment, name: String) {
         supportFragmentManager.beginTransaction()
             .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out, android.R.anim.fade_in, android.R.anim.fade_out)
-            .replace(R.id.container, AppearancePage())
-            .addToBackStack("appearance")
+            .replace(R.id.container, page)
+            .addToBackStack(name)
             .commit()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent.getIntExtra(Notifier.EXTRA_TAB, -1).takeIf { it >= 0 }?.let(::showTab)
+        when (val t = intent.getIntExtra(Notifier.EXTRA_TAB, -1)) {
+            -1 -> Unit
+            Syncer.TAB_HISTORY -> { showTab(Syncer.TAB_SCHEDULE); b.root.post { openHistory() } }
+            else -> showTab(t)
+        }
     }
 
     fun showTab(index: Int) {
@@ -169,9 +169,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPage(index: Int) {
         val page: Fragment = when (index) {
-            Syncer.TAB_SEARCH -> SearchPage()
+            Syncer.TAB_PASS -> PassPage()
+            Syncer.TAB_PLANNER -> PlannerPage()
             Syncer.TAB_GRADES -> GradesPage()
-            Syncer.TAB_HISTORY -> HistoryPage()
             Syncer.TAB_SETTINGS -> SettingsPage()
             else -> SchedulePage()
         }
@@ -184,7 +184,6 @@ class MainActivity : AppCompatActivity() {
         tempSchedule = s
         tempLessons = lessons
         selectedUid = s.uid
-        week = LocalDate.now(CalendarSync.SUSU_ZONE).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
         showTab(Syncer.TAB_SCHEDULE)
     }
 

@@ -22,7 +22,6 @@ class AppearancePage : Page() {
         fun opt(label: String, value: Boolean, change: (DisplayOptions, Boolean) -> DisplayOptions) =
             root.addView(ctx.switch(label, value) { v ->
                 prefs.display = change(prefs.display, v)
-                main.refreshPassSwipe()
             })
 
         root.addView(ctx.section("Тема"))
@@ -49,10 +48,9 @@ class AppearancePage : Page() {
 
         root.addView(ctx.section("Лента"))
         opt("Скрывать прошедшие дни", d.hidePast) { o, v -> o.copy(hidePast = v) }
+        opt("Свободные окна между парами", d.windows) { o, v -> o.copy(windows = v) }
 
         root.addView(ctx.section("Пропуск"))
-        opt("Открывать пропуск смахиванием слева направо", d.passSwipe) { o, v -> o.copy(passSwipe = v) }
-        opt("Подсказка «Пропуск» при запуске (5 секунд)", d.passHint) { o, v -> o.copy(passHint = v) }
         root.addView(ctx.button("Показать пропуск", outlined = true) { main.openPass() }.apply {
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,

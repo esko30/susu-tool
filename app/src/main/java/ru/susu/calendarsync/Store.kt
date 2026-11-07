@@ -41,6 +41,7 @@ data class SavedSchedule(
 
 /** Файловое хранилище: список сохранённых расписаний и кэш занятий для офлайн-просмотра. */
 class Store(context: Context) {
+    private val appContext = context.applicationContext
     private val dir = context.filesDir
     private val listFile = File(dir, "saved_schedules.json")
 
@@ -110,6 +111,11 @@ class Store(context: Context) {
     }
 
     fun saveLessons(uid: String, lessons: List<Lesson>) {
+        saveLessonsOnly(uid, lessons)
+        runCatching { NowWidget.update(appContext) }
+    }
+
+    private fun saveLessonsOnly(uid: String, lessons: List<Lesson>) {
         val arr = JSONArray()
         lessons.forEach { arr.put(it.toJson()) }
         cacheFile(uid).writeText(arr.toString())

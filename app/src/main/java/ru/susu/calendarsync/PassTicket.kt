@@ -1,13 +1,9 @@
 package ru.susu.calendarsync
 
-import android.app.Dialog
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.Typeface
-import android.util.TypedValue
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -16,16 +12,10 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
-import android.widget.TextView
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlin.math.abs
 
 /**
  * Электронный пропуск ЮУрГУ. Портал отдаёт числовой код (/api/User/GetPassTicket), веб-версия
@@ -59,90 +49,109 @@ object PassTicket {
         val px = IntArray(size * size) { i -> if (m[i % size, i / size]) Color.BLACK else Color.WHITE }
         return Bitmap.createBitmap(px, size, size, Bitmap.Config.ARGB_8888)
     }
+}
 
-    /**
-     * Полноэкранный пропуск: плавно выезжает слева, яркость экрана — максимальная, пока он открыт.
-     * Закрывается касанием, смахиванием влево или кнопкой «Назад».
-     */
-    fun show(context: Context, scope: CoroutineScope) {
-        val dialog = Dialog(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
-        val dp = { v: Int -> context.dp(v) }
-
-        val card = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
+/**
+ * Вкладка «Пропуск»: QR-код на белом фоне. Пока вкладка открыта, яркость экрана максимальная
+ * и экран не гаснет; при уходе с вкладки всё возвращается как было.
+ */
+class PassPage : Page() {
+    override fun build(): View {
+        val ctx = requireContext()
+        // В стиле приложения: фон темы, QR — в белой карточке (белый фон нужен для считывания).
+        val col = ctx.vertical().apply {
             gravity = Gravity.CENTER_HORIZONTAL
-            setBackgroundColor(Color.WHITE)
-            setPadding(dp(28), dp(28), dp(28), dp(28))
+            setPadding(ctx.dp(24), ctx.dp(24), ctx.dp(24), ctx.dp(24))
         }
-        fun label(text: String, size: Float, bold: Boolean = false, color: Int = Color.BLACK) = TextView(context).apply {
-            this.text = text
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
-            setTextColor(color)
+        col.addView(ctx.text("ПРОПУСК ЮУрГУ", 13f, bold = true, colorAttr = com.google.android.material.R.attr.colorPrimary).apply {
+            letterSpacing = 0.12f
             gravity = Gravity.CENTER
-            if (bold) setTypeface(typeface, Typeface.BOLD)
-        }
-        card.addView(label("Пропуск ЮУрГУ", 24f, bold = true))
-        Prefs(context).displayName.takeIf { it.isNotBlank() }?.let {
-            card.addView(label(it, 16f, color = Color.DKGRAY).apply { setPadding(0, dp(6), 0, 0) })
-        }
-        val qrSize = (context.resources.displayMetrics.widthPixels * 0.78f).toInt()
-        val holder = FrameLayout(context).apply {
-            layoutParams = LinearLayout.LayoutParams(qrSize, qrSize).apply { topMargin = dp(24); bottomMargin = dp(16) }
-            addView(ProgressBar(context), FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER))
-        }
-        card.addView(holder)
-        val number = label("", 15f, color = Color.GRAY)
-        card.addView(number)
-        card.addView(label("Коснитесь или смахните влево, чтобы закрыть", 13f, color = Color.GRAY).apply { setPadding(0, dp(24), 0, 0) })
-
-        val root = FrameLayout(context).apply {
-            setBackgroundColor(Color.WHITE)
-            addView(card, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        })
+        Prefs(ctx).displayName.takeIf { it.isNotBlank() }?.let {
+            col.addView(ctx.text(it, 22f, bold = true).apply { gravity = Gravity.CENTER; setPadding(0, ctx.dp(6), 0, 0) })
         }
 
-        fun close() {
-            root.animate().translationX(-root.width * 0.35f).alpha(0f).setDuration(220)
-                .withEndAction { dialog.dismiss() }.start()
+        val qrSize = (ctx.resources.displayMetrics.widthPixels * 0.62f).toInt()
+        val holder = FrameLayout(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(qrSize, qrSize)
+            addView(ProgressBar(ctx), FrameLayout.LayoutParams(ctx.dp(48), ctx.dp(48), Gravity.CENTER))
         }
-        var downX = 0f
-        root.setOnTouchListener { _, e ->
-            when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> downX = e.x
-                MotionEvent.ACTION_UP -> if (downX - e.x > dp(80) || abs(downX - e.x) < dp(10)) close()
-            }
-            true
+        val number = ctx.text("", 17f, bold = true).apply {
+            setTextColor(Color.rgb(32, 33, 36))
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+            letterSpacing = 0.18f
+            gravity = Gravity.CENTER
+            setPadding(0, ctx.dp(14), 0, 0)
         }
-        dialog.setOnKeyListener { _, keyCode, event ->
-            if (keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_UP) { close(); true } else false
+        val inner = ctx.vertical().apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(ctx.dp(22), ctx.dp(22), ctx.dp(22), ctx.dp(18))
+            addView(holder)
+            addView(number)
         }
+        val card = com.google.android.material.card.MaterialCardView(ctx).apply {
+            radius = ctx.dp(28).toFloat()
+            setCardBackgroundColor(Color.WHITE)
+            cardElevation = ctx.dp(6).toFloat()
+            strokeWidth = 0
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .apply { topMargin = ctx.dp(22); bottomMargin = ctx.dp(18) }
+            addView(inner)
+        }
+        col.addView(card)
 
-        dialog.setContentView(root)
-        dialog.window?.apply {
-            // Максимальная яркость только пока открыт пропуск — сканеру так проще прочитать код.
-            attributes = attributes.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL }
-            addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            setWindowAnimations(0)
+        val root = FrameLayout(ctx).apply {
+            setBackgroundColor(ctx.color(com.google.android.material.R.attr.colorSurface))
+            addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         }
-        root.alpha = 0f
-        root.translationX = -context.resources.displayMetrics.widthPixels * 0.35f
-        dialog.show()
-        root.animate().translationX(0f).alpha(1f).setDuration(320).setInterpolator(DecelerateInterpolator()).start()
+        // Плавное появление.
+        col.alpha = 0f
+        col.translationY = ctx.dp(16).toFloat()
+        col.animate().alpha(1f).translationY(0f).setDuration(320).setInterpolator(DecelerateInterpolator()).start()
 
-        val app = context.applicationContext
-        scope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { get(app).let { it to qr(it, qrSize) } } }
+        if (!Prefs(ctx).hasCredentials) {
             holder.removeAllViews()
-            result.onSuccess { (code, bmp) ->
-                holder.addView(ImageView(context).apply {
+            holder.addView(ctx.text("Войдите в аккаунт на вкладке «Настройки», чтобы получить пропуск.", 16f).apply {
+                setTextColor(Color.DKGRAY); gravity = Gravity.CENTER
+            }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+            return root
+        }
+        val app = ctx.applicationContext
+        background({ PassTicket.get(app).let { it to PassTicket.qr(it, qrSize) } }) { r ->
+            holder.removeAllViews()
+            r.onSuccess { (code, bmp) ->
+                holder.addView(ImageView(ctx).apply {
                     setImageBitmap(bmp)
                     alpha = 0f
                     animate().alpha(1f).setDuration(250).start()
                 }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                 number.text = code
             }.onFailure {
-                holder.addView(label("Не удалось получить пропуск.\nПроверьте интернет и вход в аккаунт.", 16f, color = Color.DKGRAY),
-                    FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+                holder.addView(ctx.text("Не удалось получить пропуск.\nПроверьте интернет и вход в аккаунт.", 16f).apply {
+                    setTextColor(Color.DKGRAY); gravity = Gravity.CENTER
+                }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
             }
         }
+        return root
+    }
+
+    override fun onResume() {
+        super.onResume()
+        setBright(true)
+    }
+
+    override fun onPause() {
+        setBright(false)
+        super.onPause()
+    }
+
+    /** Максимальная яркость и запрет гашения экрана — только пока открыт пропуск. */
+    private fun setBright(on: Boolean) {
+        val window = activity?.window ?: return
+        window.attributes = window.attributes.apply {
+            screenBrightness = if (on) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        }
+        if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 }

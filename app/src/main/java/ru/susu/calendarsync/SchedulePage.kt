@@ -5,17 +5,16 @@ import androidx.core.view.doOnLayout
 import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
+import androidx.lifecycle.lifecycleScope
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import java.text.SimpleDateFormat
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.Date
 import java.util.Locale
 
 /**
@@ -82,15 +81,17 @@ class SchedulePage : Page() {
     private val autoLoaded = HashSet<String>()
 
     private val ru = Locale("ru")
-    private val dayFmt = DateTimeFormatter.ofPattern("EEEE, d MMMM", ru)
 
     override val keepScroll get() = !jumpToToday
     private var display = DisplayOptions(true, true, true, true, true, true, true, false)
+    /** Занятия открытого расписания и записи планера по парам — для карточек и панели «В планер». */
+    private var feedLessons: List<Lesson> = emptyList()
+    private var plannerByLesson: Map<String, List<PlannerItem>> = emptyMap()
 
     private fun showBells() {
         val ctx = requireContext()
         val box = ctx.vertical(20)
-        val now = LocalDateTime.now(CalendarSync.SUSU_ZONE).toLocalTime()
+        val now = Clock.now().toLocalTime()
         for (p in Bells.pairs) {
             val row = ctx.horizontal().apply { setPadding(0, ctx.dp(6), 0, ctx.dp(6)) }
             val current = !now.isBefore(p.start1) && now.isBefore(p.end2)
@@ -136,7 +137,10 @@ class SchedulePage : Page() {
         if (list.isEmpty()) {
             header.addView(ctx.title("Расписание"))
             if (status.isNotBlank()) header.addView(ctx.secondary(status))
-            header.addView(ctx.secondary("Войдите в аккаунт на вкладке «Настройки» или найдите группу, преподавателя или аудиторию во вкладке «Поиск»."))
+            header.addView(ctx.secondary("Войдите в аккаунт на вкладке «Настройки» или найдите группу, преподавателя или аудиторию."))
+            header.addView(ctx.button("Найти расписание", outlined = true) {
+                SearchDialog.show(main, viewLifecycleOwner.lifecycleScope) { showQuick(it.kind, it.name, it) }
+            })
             return page
         }
 
@@ -163,13 +167,18 @@ class SchedulePage : Page() {
         } as com.google.android.material.button.MaterialButton
         selectorView = selector
         selectorName = selector.text
+        selector.tag = "tour_selector"
         row.addView(selector.weight())
+        row.addView(iconButton(R.drawable.ic_nav_search, "Поиск") {
+            SearchDialog.show(main, viewLifecycleOwner.lifecycleScope) { showQuick(it.kind, it.name, it) }
+        }.apply { tag = "tour_search" })
         row.addView(iconButton(R.drawable.ic_today, "Сегодня") {
-            scrollToToday?.invoke() ?: run { jumpToToday = true; render() }
-        })
-        row.addView(iconButton(R.drawable.ic_bells, "Расписание звонков") { showBells() })
+            if (Prefs(ctx).weekView) { weekOffset = null; render(fade = true) }
+            else scrollToToday?.invoke() ?: run { jumpToToday = true; render() }
+        }.apply { tag = "tour_today" })
+        row.addView(historyButton())
         lateinit var more: View
-        more = iconButton(R.drawable.ic_more, "Ещё") { showMenu(more, current, isTemp, store) }
+        more = iconButton(R.drawable.ic_more, "Ещё") { showMenu(more, current, isTemp, store) }.apply { tag = "tour_more" }
         row.addView(more)
         header.addView(row)
         // Тонкая бегущая полоска под шапкой, пока идёт обновление.
@@ -210,7 +219,14 @@ class SchedulePage : Page() {
 
         display = Prefs(ctx).display
         val lessons = if (isTemp) main.tempLessons else store.lessons(current.uid)
-        val today = LocalDate.now(CalendarSync.SUSU_ZONE)
+        feedLessons = lessons
+        plannerByLesson = Planner.byLesson(ctx)
+        val today = Clock.today()
+        if (Prefs(ctx).weekView) {
+            scrollToToday = null
+            feed.addView(weekGrid(lessons, today))
+            return frame
+        }
         val byDay = lessons.distinctBy { it.key }
             .filter { !display.hidePast || it.date >= today.toString() }
             .sortedWith(compareBy({ it.date }, { it.beginTime })).groupBy { it.date }
@@ -220,13 +236,22 @@ class SchedulePage : Page() {
                 .apply { setPadding(0, ctx.dp(24), 0, 0) })
         }
         var anchor: View? = null
+        var tourTagged = false
         for ((date, items) in byDay) {
             val d = runCatching { LocalDate.parse(date) }.getOrNull() ?: continue
             val header2 = dayHeader(d, today)
             feed.addView(header2)
             // Якорь — заголовок сегодняшнего дня с меткой «Сегодня», а если сегодня пар нет — ближайшего дня.
             if (anchor == null && !d.isBefore(today)) anchor = header2
-            items.forEach { l -> feed.addView(lessonCard(l, past = d < today)) }
+            val windows = if (display.windows) Timeline.windows(items).associateBy { it.to } else emptyMap()
+            val shown = HashSet<String>()
+            items.forEach { l ->
+                windows[l.beginTime]?.takeIf { shown.add(it.to) }?.let { feed.addView(windowRow(it, d, today)) }
+                val card = lessonCard(l, past = d < today)
+                // Для тура — первая пара начиная с сегодняшнего дня.
+                if (!tourTagged && !d.isBefore(today)) { card.tag = "tour_card"; tourTagged = true }
+                feed.addView(card)
+            }
         }
         updateLive(allowRender = false)
         // Для кнопки «Сегодня»: плавная прокрутка к якорю без перестройки экрана.
@@ -255,9 +280,208 @@ class SchedulePage : Page() {
 
     private var scrollToToday: (() -> Unit)? = null
 
+    /** Сдвиг показанной недели от текущей (вид «неделя»). */
+    /** null — неделя по умолчанию: текущая, а после её последней пары — следующая. */
+    private var weekOffset: Long? = null
+
+    /**
+     * Неделя сеткой: строки — пары по звонкам, столбцы — дни. В ячейке — сокращённый предмет и аудитория,
+     * цвет — по типу занятия. Нажатие открывает полные карточки пар этой ячейки.
+     */
+    private fun weekGrid(lessons: List<Lesson>, today: LocalDate): View {
+        val ctx = requireContext()
+        val box = ctx.vertical()
+        val offset = weekOffset ?: Timeline.defaultWeek(lessons, Clock.now())
+        val monday = Timeline.weekStart(today).plusWeeks(offset)
+        val days = (0L until 7L).map { monday.plusDays(it) }
+        val inWeek = lessons.distinctBy { it.key }.filter { it.date >= monday.toString() && it.date <= days.last().toString() }
+        // Воскресенье — только если в него есть пары.
+        val shownDays = days.filter { it.dayOfWeek != java.time.DayOfWeek.SUNDAY || inWeek.any { l -> l.date == it.toString() } }
+
+        // Переключатель недель.
+        val nav = ctx.horizontal().apply { gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(0, ctx.dp(10), 0, ctx.dp(8)) }
+        nav.addView(ctx.textButton("‹") { weekOffset = offset - 1; render(fade = true) })
+        val f = DateTimeFormatter.ofPattern("d MMMM", ru)
+        val title = if (monday.month == days[5].month) "${monday.dayOfMonth}–${days[5].format(f)}"
+            else "${monday.format(f)} – ${days[5].format(f)}"
+        nav.addView(ctx.vertical().apply {
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            addView(ctx.text(title, 17f, bold = true))
+            addView(ctx.secondary(when (offset) {
+                0L -> "эта неделя"
+                1L -> "следующая неделя"
+                -1L -> "прошлая неделя"
+                else -> if (offset > 0) "через $offset нед." else "${-offset} нед. назад"
+            }, 12f))
+        })
+        nav.addView(ctx.textButton("›") { weekOffset = offset + 1; render(fade = true) })
+        box.addView(nav)
+
+        if (inWeek.isEmpty()) {
+            box.addView(ctx.secondary("На этой неделе занятий нет.").apply { setPadding(ctx.dp(4), ctx.dp(16), 0, 0) })
+            return box
+        }
+
+        val byCell = inWeek.groupBy { it.date to Timeline.pairNumber(it.beginTime) }
+        val numbers = byCell.keys.map { it.second }
+        val rows = (numbers.min()..numbers.max()).toList()
+        val gap = ctx.dp(3)
+        val cellH = ctx.dp(if (display.compact) 58 else 70)
+
+        // Заголовок: дни недели.
+        val head = ctx.horizontal()
+        head.addView(View(ctx).apply { layoutParams = LinearLayout.LayoutParams(ctx.dp(30), 1) })
+        for (d in shownDays) {
+            val isToday = d == today
+            val c = if (isToday) com.google.android.material.R.attr.colorPrimary else com.google.android.material.R.attr.colorOnSurfaceVariant
+            head.addView(ctx.vertical().apply {
+                gravity = android.view.Gravity.CENTER_HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                addView(ctx.text(d.format(DateTimeFormatter.ofPattern("EE", ru)).replaceFirstChar { it.uppercase() }, 12f, bold = true, colorAttr = c))
+                addView(ctx.text("${d.dayOfMonth}", 15f, bold = isToday, colorAttr = c))
+                setPadding(0, 0, 0, ctx.dp(6))
+            })
+        }
+        box.addView(head)
+
+        val now = Clock.now()
+        for (n in rows) {
+            val row = ctx.horizontal().apply {
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, cellH).apply { bottomMargin = gap }
+            }
+            val bell = Bells.pairs.firstOrNull { it.number == n }
+            row.addView(ctx.vertical().apply {
+                gravity = android.view.Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(ctx.dp(30), ViewGroup.LayoutParams.MATCH_PARENT)
+                addView(ctx.text("$n", 14f, bold = true))
+                bell?.let { addView(ctx.secondary(it.start1.toString(), 9f)) }
+            })
+            for (d in shownDays) {
+                val cell = byCell[d.toString() to n].orEmpty().sortedBy { it.beginTime }
+                row.addView(weekCell(cell, d, today, now).apply {
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
+                        marginStart = gap / 2; marginEnd = gap / 2
+                    }
+                })
+            }
+            box.addView(row)
+        }
+        box.addView(ctx.secondary("Нажмите на ячейку, чтобы открыть пару.", 12f).apply { setPadding(ctx.dp(4), ctx.dp(8), 0, 0) })
+        return box
+    }
+
+    /** Сокращение предмета для ячейки сетки: «Математический анализ» → «Мате. анализ». */
+    private fun shortSubject(s: String): String {
+        val words = s.split(' ').filter { it.isNotBlank() }
+        if (s.length <= 14 || words.size < 2) return s
+        return words.joinToString(" ") { w -> if (w.length > 7 && w.first().isLetter()) w.take(4) + "." else w }
+    }
+
+    private fun weekCell(cell: List<Lesson>, d: LocalDate, today: LocalDate, now: LocalDateTime): View {
+        val ctx = requireContext()
+        val v = ctx.vertical().apply { setPadding(ctx.dp(4), ctx.dp(3), ctx.dp(3), ctx.dp(3)) }
+        val r = ctx.dp(8).toFloat()
+        if (cell.isEmpty()) {
+            v.background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = r
+                setColor(ctx.color(com.google.android.material.R.attr.colorSurfaceContainerLow))
+            }
+            if (d < today) v.alpha = 0.6f
+            return v
+        }
+        val l = cell.first()
+        val accent = typeColor(l.eventType)
+        val b = bounds(l)
+        val ongoing = b != null && !now.isBefore(b.first) && now.isBefore(b.second)
+        v.background = android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = r
+            setColor(androidx.core.graphics.ColorUtils.setAlphaComponent(accent, 0x38))
+            if (ongoing) setStroke(ctx.dp(2), accent)
+        }
+        v.addView(ctx.text(shortSubject(l.subject), 10f, bold = true).apply {
+            maxLines = if (this@SchedulePage.display.compact) 2 else 3
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setLineSpacing(0f, 0.9f)
+        })
+        val room = l.location.substringBefore(";").trim()
+        if (room.isNotBlank()) v.addView(ctx.text(room, 9f, bold = true).apply {
+            setTextColor(accent); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+        })
+        if (cell.size > 1) v.addView(ctx.secondary("+${cell.size - 1}", 9f))
+        // Прошедшие — чуть бледнее, но читаемые.
+        if (d < today || (b != null && b.second.isBefore(now))) v.alpha = 0.72f
+        v.setOnClickListener { showCell(cell, d < today) }
+        return v
+    }
+
+    /** Полные карточки пар ячейки — с теми же нажатиями, что и в ленте. */
+    private fun showCell(cell: List<Lesson>, past: Boolean) {
+        val ctx = requireContext()
+        val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(ctx)
+        val box = ctx.vertical(16)
+        box.addView(ctx.secondary(ChangeDiff.day(cell.first().date).replaceFirstChar { it.uppercase() }, 14f).apply {
+            setPadding(ctx.dp(4), 0, 0, ctx.dp(4))
+        })
+        cell.forEach { box.addView(lessonCard(it, past)) }
+        sheet.setContentView(ctx.scroll(box))
+        sheet.show()
+    }
+
+    /** Плашка свободного окна между парами; сегодняшнее идущее окно — с отсчётом. */
+    private fun windowRow(w: Timeline.Window, d: LocalDate, today: LocalDate): View {
+        val ctx = requireContext()
+        val row = ctx.horizontal().apply {
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(ctx.dp(8), ctx.dp(2), ctx.dp(8), ctx.dp(6))
+            if (d < today) alpha = 0.55f
+        }
+        fun line() = View(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ctx.dp(1), 1f)
+            setBackgroundColor(ctx.color(com.google.android.material.R.attr.colorOutlineVariant))
+        }
+        val now = Clock.now()
+        val active = d == today && now.toLocalTime().let { it >= java.time.LocalTime.parse(w.from) && it < java.time.LocalTime.parse(w.to) }
+        val left = if (active) Duration.between(now.toLocalTime(), java.time.LocalTime.parse(w.to)).toMinutes() else 0
+        val label = "Окно ${Timeline.duration(w.minutes)} · ${w.from}–${w.to}" +
+            if (active) " · ещё ${Timeline.duration(left.coerceAtLeast(1))}" else ""
+        row.addView(line())
+        row.addView(ctx.text(label, 12f, bold = active,
+            colorAttr = if (active) com.google.android.material.R.attr.colorPrimary else com.google.android.material.R.attr.colorOnSurfaceVariant,
+        ).apply { setPadding(ctx.dp(10), 0, ctx.dp(10), 0) })
+        row.addView(line())
+        return row
+    }
+
     /** Позиция прокрутки, при которой якорный день стоит сразу под шапкой; без якоря — конец ленты. */
     private fun todayOffset(target: View?, feed: View) =
         target?.let { (it.top + it.paddingTop - feed.context.dp(14)).coerceAtLeast(0) } ?: feed.height
+
+    /** Колокольчик «Изменения» со счётчиком новых изменений с прошлого просмотра. */
+    private fun historyButton(): View {
+        val ctx = requireContext()
+        val seen = Prefs(ctx).historySeen
+        val unseen = ChangeLog(ctx).load().filter { it.timestamp > seen }.sumOf { it.changes.size }
+        return android.widget.FrameLayout(ctx).apply {
+            tag = "tour_history"
+            addView(iconButton(R.drawable.ic_bell, "Изменения") { main.openHistory() })
+            if (unseen > 0) addView(TextView(ctx).apply {
+                text = if (unseen > 99) "99+" else unseen.toString()
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(ctx.color(com.google.android.material.R.attr.colorOnError))
+                gravity = android.view.Gravity.CENTER
+                minWidth = ctx.dp(16)
+                setPadding(ctx.dp(4), 0, ctx.dp(4), 0)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = ctx.dp(8).toFloat()
+                    setColor(ctx.color(com.google.android.material.R.attr.colorError))
+                }
+            }, android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ctx.dp(16), android.view.Gravity.TOP or android.view.Gravity.END,
+            ).apply { setMargins(0, ctx.dp(6), ctx.dp(4), 0) })
+        }
+    }
 
     private fun iconButton(icon: Int, description: String, onClick: () -> Unit) =
         com.google.android.material.button.MaterialButton(
@@ -276,12 +500,22 @@ class SchedulePage : Page() {
         val ctx = requireContext()
         val popup = android.widget.PopupMenu(ctx, anchor)
         popup.menu.add(0, 1, 0, "Обновить")
+        popup.menu.add(0, 5, 0, "Расписание звонков")
+        popup.menu.add(0, 6, 0, if (Prefs(ctx).weekView) "Вид: лента" else "Вид: неделя")
         if (isTemp) popup.menu.add(0, 2, 1, "★ Сохранить расписание")
         else popup.menu.add(0, 3, 1, "Уведомления и календарь…")
         if (!isTemp && !current.own) popup.menu.add(0, 4, 2, "Удалить из сохранённых")
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> refresh(current, isTemp)
+                5 -> showBells()
+                6 -> {
+                    val p = Prefs(ctx)
+                    p.weekView = !p.weekView
+                    weekOffset = null
+                    jumpToToday = true
+                    render(fade = true)
+                }
                 2 -> {
                     store.upsert(current)
                     store.saveLessons(current.uid, main.tempLessons)
@@ -377,7 +611,7 @@ class SchedulePage : Page() {
     /** Обновляет полосы прогресса; если какая-то пара началась или закончилась — перестраивает экран. */
     private fun updateLive(allowRender: Boolean = true) {
         if (live.isEmpty()) return
-        val now = LocalDateTime.now(CalendarSync.SUSU_ZONE)
+        val now = Clock.now()
         if (allowRender && live.any { state(it.lesson, now) != it.state }) {
             jumpToToday = false
             render()
@@ -416,16 +650,8 @@ class SchedulePage : Page() {
     }
 
     /** Цвет полосы и метки по типу занятия. */
-    private fun typeColor(type: String): Int {
-        val t = type.lowercase()
-        return when {
-            t.startsWith("лекц") -> Color.rgb(79, 142, 247)
-            t.startsWith("практ") || t.startsWith("семин") -> Color.rgb(67, 175, 108)
-            t.startsWith("лаб") -> Color.rgb(245, 146, 54)
-            t.contains("экзам") || t.contains("зачет") || t.contains("зачёт") || t.contains("консульт") -> Color.rgb(229, 83, 83)
-            else -> Color.rgb(156, 120, 230)
-        }
-    }
+    private fun typeColor(type: String): Int = lessonTypeColor(type)
+
 
     /** Убирает служебные подписи: ФИО и номера групп понятны и так. */
     private fun stripLabel(line: String) = line.substringAfter(": ", line)
@@ -471,6 +697,21 @@ class SchedulePage : Page() {
         }
         content.addView(titleRow)
 
+        // Метки планера на этой паре: «Контрольная», «Коллоквиум»… — нажатие открывает запись.
+        plannerByLesson["${l.date}|${l.beginTime}|${l.subject}"]?.filter { !it.done }?.takeIf { it.isNotEmpty() }?.let { items ->
+            val chips = com.google.android.material.chip.ChipGroup(ctx).apply {
+                chipSpacingVertical = ctx.dp(4)
+                setPadding(0, ctx.dp(6), 0, ctx.dp(2))
+            }
+            for (item in items) {
+                val title = item.label.ifBlank { "Заметка" } + if (item.note.isNotBlank() && item.label.isNotBlank()) " · …" else ""
+                chips.addView(ctx.chip(title, Planner.labelColor(item.label)).apply {
+                    setOnClickListener { PlannerSheet.show(ctx, l, item, feedLessons) { render() } }
+                })
+            }
+            content.addView(chips)
+        }
+
         val tags = ctx.horizontal().apply { setPadding(0, ctx.dp(6), 0, ctx.dp(2)) }
         if (!display.bigRoom && l.location.isNotBlank()) {
             tags.addView(ctx.chip(l.location, ctx.color(com.google.android.material.R.attr.colorOnSurfaceVariant)).apply {
@@ -492,7 +733,19 @@ class SchedulePage : Page() {
                     }
                 }
                 line.startsWith("Группы") -> if (display.groups) {
-                    content.addView(ctx.secondary(stripLabel(line), 14f).apply { setPadding(0, ctx.dp(2), 0, 0) })
+                    // Каждая группа нажимается отдельно и открывает своё расписание; строка переносится по ширине.
+                    val groups = com.google.android.material.chip.ChipGroup(ctx).apply {
+                        chipSpacingHorizontal = ctx.dp(2)
+                        chipSpacingVertical = 0
+                        setPadding(0, ctx.dp(2), 0, 0)
+                    }
+                    val names = stripLabel(line).split(", ").filter { it.isNotBlank() }
+                    names.forEachIndexed { i, g ->
+                        groups.addView(ctx.secondary(if (i < names.lastIndex) "$g," else g, 14f).apply {
+                            clickable { showQuick(ScheduleKind.GROUP, g) }
+                        })
+                    }
+                    content.addView(groups)
                 }
                 else -> content.addView(ctx.secondary(line, 14f).apply { setPadding(0, ctx.dp(2), 0, 0) })
             }
@@ -501,7 +754,7 @@ class SchedulePage : Page() {
 
         var ongoing = false
         var done = past
-        val now = LocalDateTime.now(CalendarSync.SUSU_ZONE)
+        val now = Clock.now()
         if (l.date == now.toLocalDate().toString()) {
             val st = state(l, now)
             val primary = ctx.color(com.google.android.material.R.attr.colorPrimary)
@@ -564,7 +817,8 @@ class SchedulePage : Page() {
                 ).apply { setMargins(ctx.dp(16), 0, 0, ctx.dp(pad)) })
             }
         }
-        return ctx.surfaceCard(body).apply {
+        // Нажатие на карточку — добавить запись в планер к этой (или следующей) паре.
+        return ctx.surfaceCard(body) { PlannerSheet.show(ctx, l, null, feedLessons) { render() } }.apply {
             clipToOutline = true
             if (done) alpha = 0.55f
             // Без анимации полоски идущую пару выделяем рамкой.
@@ -584,10 +838,10 @@ class SchedulePage : Page() {
     }
 
     /**
-     * Нижняя панель с ближайшим расписанием аудитории или преподавателя.
-     * Расписание ищется по названию через поиск портала.
+     * Нижняя панель с ближайшим расписанием группы, аудитории или преподавателя.
+     * Если [known] не передан, расписание ищется по названию через поиск портала.
      */
-    private fun showQuick(kind: ScheduleKind, query: String) {
+    fun showQuick(kind: ScheduleKind, query: String, known: ScheduleInfo? = null) {
         val ctx = requireContext()
         val app = ctx.applicationContext
         val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(ctx)
@@ -602,7 +856,7 @@ class SchedulePage : Page() {
 
         background({
             Session.call(app) { token ->
-                val found = SusuApi.search(token, query).filter { it.kind == kind }
+                val found = if (known != null) listOf(known) else SusuApi.search(token, query).filter { it.kind == kind }
                 val info = found.firstOrNull { it.name.equals(query, ignoreCase = true) }
                     ?: found.firstOrNull { it.name.startsWith(query, ignoreCase = true) }
                     ?: found.firstOrNull()
@@ -614,7 +868,22 @@ class SchedulePage : Page() {
             r.onFailure { body.addView(ctx.secondary(errorText(it))) }
             r.onSuccess { (info, lessons) ->
                 if (info.description.isNotBlank()) body.addView(ctx.secondary(info.description))
-                val today = LocalDate.now(CalendarSync.SUSU_ZONE)
+                val saved = Store(app).find("${info.kind.name}_${info.id}") != null
+                val actions = ctx.horizontal().apply { setPadding(0, ctx.dp(12), 0, ctx.dp(4)) }
+                actions.addView(ctx.button("Открыть") {
+                    sheet.dismiss()
+                    if (saved) { main.selectedUid = "${info.kind.name}_${info.id}"; jumpToToday = true; render() }
+                    else main.openTemp(SavedSchedule.from(info), lessons)
+                }.weight())
+                actions.addView(View(ctx).apply { layoutParams = LinearLayout.LayoutParams(ctx.dp(8), 1) })
+                actions.addView(ctx.button(if (saved) "✓ Сохранено" else "★ Сохранить", outlined = true) {
+                    Store(app).upsert(SavedSchedule.from(info))
+                    Store(app).saveLessons("${info.kind.name}_${info.id}", lessons)
+                    sheet.dismiss()
+                    render()
+                }.apply { isEnabled = !saved }.weight())
+                body.addView(actions)
+                val today = Clock.today()
                 val upcoming = lessons.distinctBy { it.key }
                     .filter { it.date >= today.toString() && it.date <= today.plusDays(13).toString() }
                     .sortedWith(compareBy({ it.date }, { it.beginTime })).groupBy { it.date }
@@ -630,28 +899,19 @@ class SchedulePage : Page() {
                         line.addView(ctx.text(l.beginTime, 14f, bold = true).apply { width = ctx.dp(52) })
                         val col = ctx.vertical().apply { layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
                         col.addView(ctx.text(l.subject, 14f))
+                        // Для аудитории — преподаватель и группы, для преподавателя — группы, для группы — преподаватель.
+                        val wanted = when (kind) {
+                            ScheduleKind.ROOM -> listOf("Преподавател", "Группы")
+                            ScheduleKind.TEACHER -> listOf("Группы")
+                            ScheduleKind.GROUP -> listOf("Преподавател")
+                        }
                         val meta = listOf(display.typeWord(l.eventType), if (kind == ScheduleKind.ROOM) "" else l.location) +
-                            l.details.lines().filter { it.startsWith(if (kind == ScheduleKind.TEACHER) "Группы" else "Преподавател") }.map(::stripLabel)
+                            l.details.lines().filter { line -> wanted.any { line.startsWith(it) } }.map(::stripLabel)
                         col.addView(ctx.secondary(meta.filter { it.isNotBlank() }.joinToString(" · "), 12f))
                         line.addView(col)
                         body.addView(line)
                     }
                 }
-                val saved = Store(app).find("${info.kind.name}_${info.id}") != null
-                val actions = ctx.horizontal().apply { setPadding(0, ctx.dp(16), 0, 0) }
-                actions.addView(ctx.button("Открыть") {
-                    sheet.dismiss()
-                    if (saved) { main.selectedUid = "${info.kind.name}_${info.id}"; jumpToToday = true; render() }
-                    else main.openTemp(SavedSchedule.from(info), lessons)
-                }.weight())
-                actions.addView(View(ctx).apply { layoutParams = LinearLayout.LayoutParams(ctx.dp(8), 1) })
-                actions.addView(ctx.button(if (saved) "✓ Сохранено" else "★ Сохранить", outlined = true) {
-                    Store(app).upsert(SavedSchedule.from(info))
-                    Store(app).saveLessons("${info.kind.name}_${info.id}", lessons)
-                    sheet.dismiss()
-                    render()
-                }.apply { isEnabled = !saved }.weight())
-                body.addView(actions)
             }
         }
     }

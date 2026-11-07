@@ -174,7 +174,7 @@ object Grades {
             for (e in s.events) {
                 val prev = oldEvents[e.key]
                 if (prev == null) {
-                    val pts = if (e.point != null) " — ${fmt(e.point)} из ${fmt(e.maxPoint)}" else ""
+                    val pts = if (e.point != null) ": ${fmt(e.point)} из ${fmt(e.maxPoint)}" else ""
                     lines += Change(Change.Kind.KRM_NEW, today, s.name, "${e.category}: ${e.name}$pts")
                 } else if (prev.point != e.point || prev.maxPoint != e.maxPoint) {
                     lines += Change(
@@ -254,4 +254,109 @@ class GradesStore(context: Context) {
 
     private fun JSONObject.optDoubleOrNull(key: String): Double? =
         if (has(key) && !isNull(key)) optDouble(key).takeIf { !it.isNaN() } else null
+}
+
+/**
+ * Рейтинг и прогноз по БРС ЮУрГУ, как считает портал.
+ *
+ * Текущий рейтинг (по БРС) = Σ(процент КРМ × вес) / Σ весов, только по текущему контролю
+ * (и лабораторным, курсовой); бонусы добавляются сверху. Аттестация (экзамен, зачётное мероприятие)
+ * в текущий рейтинг не входит.
+ * Если студент отказывается от рейтинга по БРС и сдаёт экзамен:
+ * итог = (1 − доля) × текущий + доля × процент за экзамен, доля по умолчанию 0,4.
+ *
+ * Прогноз опирается на рейтинг портала: к нему прибавляется разница между расчётом
+ * с введёнными баллами и расчётом с реальными, поэтому без изменений он совпадает с порталом.
+ */
+object Forecast {
+    const val ATTESTATION = "Аттестация"
+    const val BONUS = "Бонусы"
+
+    fun weight(e: PointEvent) = e.weight.replace(',', '.').trim().toDoubleOrNull() ?: 1.0
+
+    private fun scored(e: PointEvent) = (e.maxPoint ?: 0.0) > 0
+    private fun isCurrent(e: PointEvent) = scored(e) && e.category != ATTESTATION && e.category != BONUS
+
+    private fun pct(e: PointEvent, ov: Map<String, Double>) = (ov[e.key] ?: e.point ?: 0.0) / e.maxPoint!! * 100
+
+    /** Расчёт текущего рейтинга по баллам (без опоры на портал). */
+    private fun rawCurrent(s: SubjectGrades, ov: Map<String, Double>): Double {
+        val ev = s.events.filter(::isCurrent)
+        val sumW = ev.sumOf { weight(it) }
+        val base = if (sumW > 0) ev.sumOf { pct(it, ov) * weight(it) } / sumW else 0.0
+        val bonus = s.events.filter { it.category == BONUS && scored(it) }.sumOf { ov[it.key] ?: it.point ?: 0.0 }
+        return base + bonus
+    }
+
+    /** Рейтинг по БРС (без экзамена): рейтинг портала с поправкой на введённые баллы. */
+    fun current(s: SubjectGrades, ov: Map<String, Double>): Double {
+        val portal = s.currentRating ?: s.rating ?: s.bestRating ?: 0.0
+        return (portal + rawCurrent(s, ov) - rawCurrent(s, emptyMap())).coerceAtLeast(0.0)
+    }
+
+    /** Есть ли у дисциплины мероприятие аттестации (экзамен, зачётное). */
+    fun hasExam(s: SubjectGrades) = s.events.any { it.category == ATTESTATION && scored(it) }
+
+    /** Доля экзамена в итоговом рейтинге: вес аттестации с портала (0,4 или 40), иначе 0,4. */
+    fun examShare(s: SubjectGrades): Double {
+        val w = s.events.firstOrNull { it.category == ATTESTATION && scored(it) }?.let(::weight) ?: return 0.4
+        return when {
+            w > 0 && w < 1 -> w
+            w >= 2 && w < 100 -> w / 100
+            else -> 0.4
+        }
+    }
+
+    /** Процент за экзамен: введённый или с портала; null, если баллов за экзамен нет. */
+    fun examPercent(s: SubjectGrades, ov: Map<String, Double>): Double? {
+        val ev = s.events.filter { it.category == ATTESTATION && scored(it) }
+        if (ev.isEmpty() || ev.none { it.key in ov || (it.point ?: 0.0) > 0 }) return null
+        val sumW = ev.sumOf { weight(it).takeIf { w -> w > 0 } ?: 1.0 }
+        return ev.sumOf { pct(it, ov) * (weight(it).takeIf { w -> w > 0 } ?: 1.0) } / sumW
+    }
+
+    /** Итог с экзаменом при отказе от БРС. */
+    fun withExam(current: Double, exam: Double, share: Double) = (1 - share) * current + share * exam
+
+    /** Итоговый прогноз: с экзаменом, если для него есть баллы, иначе по БРС. */
+    fun projected(s: SubjectGrades, ov: Map<String, Double>): Double {
+        val cur = current(s, ov)
+        val exam = examPercent(s, ov) ?: return cur
+        return withExam(cur, exam, examShare(s))
+    }
+
+    fun isCredit(s: SubjectGrades): Boolean {
+        val t = s.controlLabel.lowercase().replace('ё', 'е')
+        return "зачет" in t && "диф" !in t
+    }
+
+    /** Оценка по рейтингу (БРС ЮУрГУ): 85 отлично, 75 хорошо, 60 удовлетворительно или зачтено. */
+    fun markFor(rating: Double, credit: Boolean): String = when {
+        credit -> if (rating >= 60) "зачтено" else "не зачтено"
+        rating >= 85 -> "5 · отлично"
+        rating >= 75 -> "4 · хорошо"
+        rating >= 60 -> "3 · удовлетворительно"
+        else -> "2 · неудовлетворительно"
+    }
+
+    /** КРМ текущего контроля без баллов, которым ещё не задали значение «что если». */
+    fun remaining(s: SubjectGrades, ov: Map<String, Double>) =
+        s.events.filter { isCurrent(it) && (it.point ?: 0.0) == 0.0 && it.key !in ov }
+
+    /** Средний процент на оставшихся КРМ, нужный для рейтинга [target] по БРС; null, если оставшихся нет. */
+    fun needed(s: SubjectGrades, ov: Map<String, Double>, target: Double): Double? {
+        val rest = remaining(s, ov)
+        val sumW = s.events.filter(::isCurrent).sumOf { weight(it) }
+        if (rest.isEmpty() || sumW <= 0) return null
+        val perPercent = rest.sumOf { weight(it) } / sumW
+        if (perPercent <= 0) return null
+        return (target - current(s, ov)) / perPercent
+    }
+
+    /** Процент на экзамене, нужный для [target] при отказе от БРС; null, если экзамена нет. */
+    fun neededExam(s: SubjectGrades, ov: Map<String, Double>, target: Double): Double? {
+        if (!hasExam(s)) return null
+        val share = examShare(s)
+        return (target - (1 - share) * current(s, ov)) / share
+    }
 }

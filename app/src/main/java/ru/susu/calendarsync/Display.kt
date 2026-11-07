@@ -29,6 +29,18 @@ object Bells {
     }
 }
 
+/** Цвет полосы и метки по типу занятия — общий для ленты, сетки недели и виджета. */
+fun lessonTypeColor(type: String): Int {
+    val t = type.lowercase()
+    return when {
+        t.startsWith("лекц") -> android.graphics.Color.rgb(79, 142, 247)
+        t.startsWith("практ") || t.startsWith("семин") -> android.graphics.Color.rgb(67, 175, 108)
+        t.startsWith("лаб") -> android.graphics.Color.rgb(245, 146, 54)
+        t.contains("экзам") || t.contains("зачет") || t.contains("зачёт") || t.contains("консульт") -> android.graphics.Color.rgb(229, 83, 83)
+        else -> android.graphics.Color.rgb(156, 120, 230)
+    }
+}
+
 /** Настройки отображения расписания. */
 data class DisplayOptions(
     val pairNumber: Boolean,
@@ -43,8 +55,8 @@ data class DisplayOptions(
     val typeTag: Boolean = true,
     val gradient: Boolean = true,
     val compact: Boolean = false,
-    val passSwipe: Boolean = true,
-    val passHint: Boolean = true,
+    /** Плашка «Окно 1 ч 40 мин» между парами. */
+    val windows: Boolean = true,
     /** 0 — как в системе, 1 — светлая, 2 — тёмная. */
     val theme: Int = 0,
 ) {
