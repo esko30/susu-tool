@@ -1,0 +1,13 @@
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+# Готовые APK выкладываются в GitHub Releases, а не в репозиторий.
+*.apk
+# Ключи подписи никогда не коммитим.
+*.jks
+*.keystore
+keystore.properties

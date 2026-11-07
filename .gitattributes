@@ -1,0 +1,6 @@
+# В репозитории — LF; скрипт gradlew должен оставаться с LF, иначе не запустится на Linux (GitHub Actions).
+* text=auto eol=lf
+*.bat text eol=crlf
+*.jar binary
+*.png binary
+*.wav binary

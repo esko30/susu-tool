@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.SusuCalendar" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">#A4C8FF</item>
+        <item name="colorOnPrimary">#00315F</item>
+        <item name="colorPrimaryContainer">#004786</item>
+        <item name="colorOnPrimaryContainer">#D3E3FF</item>
+        <item name="colorSecondaryContainer">#1F3A5C</item>
+        <item name="colorOnSecondaryContainer">#D3E3FF</item>
+        <!-- Нейтральные поверхности без фиолетового оттенка базовой темы. -->
+        <item name="android:colorBackground">#111318</item>
+        <item name="colorSurface">#111318</item>
+        <item name="colorOnSurface">#E2E2E9</item>
+        <item name="colorOnSurfaceVariant">#A9ADB8</item>
+        <item name="colorSurfaceContainerLowest">#0C0E13</item>
+        <item name="colorSurfaceContainerLow">#191C20</item>
+        <item name="colorSurfaceContainer">#1D2024</item>
+        <item name="colorSurfaceContainerHigh">#282A2F</item>
+        <item name="colorSurfaceContainerHighest">#33353A</item>
+        <item name="colorOutline">#8D9199</item>
+        <item name="colorOutlineVariant">#43474E</item>
+        <item name="android:statusBarColor">#111318</item>
+        <item name="android:navigationBarColor">#1D2024</item>
+        <!-- Без серой системной подсветки фокуса поверх экранов. -->
+        <item name="android:defaultFocusHighlightEnabled">false</item>
+    </style>
+</resources>

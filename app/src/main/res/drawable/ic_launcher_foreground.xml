@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Академическая шапочка и часы; уменьшено к центру, чтобы влезть в безопасную зону адаптивной иконки. -->
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="0.82" android:scaleY="0.82">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M54,28 L84,41 L54,54 L24,41 Z" />
+        <path android:fillColor="#D9FFFFFF" android:pathData="M36,47 v12 c0,6 36,6 36,0 v-12 l-18,8 z" />
+        <path android:fillColor="#FFFFC857" android:pathData="M72,57 a13,13 0 1,0 0.01,0 z" />
+        <path android:strokeColor="#FF0054A6" android:strokeWidth="3" android:strokeLineCap="round"
+            android:fillColor="#00000000" android:pathData="M72,63 v7 l5,3" />
+    </group>
+</vector>
