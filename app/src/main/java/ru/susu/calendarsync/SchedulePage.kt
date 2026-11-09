@@ -281,12 +281,9 @@ class SchedulePage : Page() {
         // Вход в приложение: карточки выезжают каскадом и приветствие по имени.
         if (main.greetPending) {
             main.greetPending = false
+            // Плашка встаёт сразу под заголовком сегодняшнего дня и выезжает вместе с карточками.
+            greeting()?.let { g -> feed.addView(g, (anchor?.let { feed.indexOfChild(it) } ?: -1) + 1) }
             cascade(feed, anchor)
-            greeting(frame, header, lessons, today)?.let { g ->
-                frame.addView(g, android.widget.FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.TOP,
-                ))
-            }
         }
         return frame
     }
@@ -307,23 +304,28 @@ class SchedulePage : Page() {
         }
     }
 
-    /** «Привет, Александр!» и сводка на сегодня; через несколько секунд плавно уходит. */
-    private fun greeting(frame: android.widget.FrameLayout, header: View, lessons: List<Lesson>, today: LocalDate): View? {
+    /**
+     * «Привет, имя!» под заголовком сегодняшнего дня и цитата: при каждом открытии следующая по кругу.
+     * Через 2 минуты плашка уезжает вверх и схлопывается; по нажатию закрывается сразу.
+     */
+    private fun greeting(): View? {
         val ctx = requireContext()
         val prefs = Prefs(ctx)
         if (!prefs.hasCredentials) return null
+        // Имя того, кто вошёл: второе слово ФИО с портала («Фамилия Имя Отчество»).
         val name = prefs.displayName.split(" ").filter { it.isNotBlank() }.let { it.getOrNull(1) ?: it.firstOrNull() } ?: return null
-        val hidden = prefs.hiddenLessons
-        val left = Timeline.upcoming(lessons.filterNot { Hidden.isHidden(hidden, it) }, Clock.now())
-            .filter { it.date == today.toString() }
-        val summary = when {
-            left.isEmpty() -> "Сегодня пар больше нет"
-            else -> {
-                val first = left.first()
-                val room = first.location.substringBefore(";").trim()
-                "Сегодня ещё " + Remind.plural(left.size, "пара", "пары", "пар") +
-                    ", ближайшая в ${first.beginTime}" + if (room.isNotBlank()) ", $room" else ""
-            }
+        val quotes = Quotes.all(ctx)
+        val index = if (quotes.isEmpty()) 0 else (prefs.quoteIndex + 1).mod(quotes.size)
+        prefs.quoteIndex = index
+        val quote = ctx.text(quotes.getOrElse(index) { "" }, 14f, colorAttr = com.google.android.material.R.attr.colorOnPrimaryContainer).apply {
+            alpha = 0.85f
+            setPadding(0, ctx.dp(2), 0, 0)
+        }
+        lateinit var wrap: View
+        fun dismiss() {
+            if (wrap.parent == null) return
+            wrap.animate().alpha(0f).translationY(-ctx.dp(16).toFloat()).setDuration(260).start()
+            SwipeRow.collapse(wrap, 0) { (wrap.parent as? ViewGroup)?.removeView(wrap) }
         }
         val card = ctx.vertical().apply {
             setPadding(ctx.dp(18), ctx.dp(12), ctx.dp(18), ctx.dp(12))
@@ -331,27 +333,16 @@ class SchedulePage : Page() {
                 cornerRadius = ctx.dp(18).toFloat()
                 setColor(ctx.color(com.google.android.material.R.attr.colorPrimaryContainer))
             }
-            elevation = ctx.dp(4).toFloat()
             addView(ctx.text("Привет, $name!", 18f, bold = true, colorAttr = com.google.android.material.R.attr.colorOnPrimaryContainer))
-            addView(ctx.text(summary, 14f, colorAttr = com.google.android.material.R.attr.colorOnPrimaryContainer).apply {
-                alpha = 0.85f
-                setPadding(0, ctx.dp(2), 0, 0)
-            })
-            setOnClickListener { animate().alpha(0f).setDuration(200).withEndAction { frame.removeView(this) }.start() }
+            if (quotes.isNotEmpty()) addView(quote)
+            setOnClickListener { dismiss() }
         }
-        val wrap = android.widget.FrameLayout(ctx).apply {
-            setPadding(ctx.dp(16), 0, ctx.dp(16), 0)
+        wrap = android.widget.FrameLayout(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .apply { setMargins(0, ctx.dp(2), 0, ctx.dp(6)) }
             addView(card)
-            alpha = 0f
         }
-        header.doOnLayout {
-            wrap.translationY = header.height.toFloat() - ctx.dp(8)
-            wrap.animate().alpha(1f).translationY(header.height.toFloat() + ctx.dp(4)).setStartDelay(250).setDuration(350).start()
-            wrap.postDelayed({
-                wrap.animate().alpha(0f).translationY(header.height.toFloat() - ctx.dp(12)).setDuration(300)
-                    .withEndAction { frame.removeView(wrap) }.start()
-            }, 3600)
-        }
+        wrap.postDelayed({ dismiss() }, 120_000)
         return wrap
     }
 

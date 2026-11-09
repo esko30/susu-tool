@@ -183,6 +183,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("tightLines", false)
         set(v) = sp.edit { putBoolean("tightLines", v) }
 
+    /** Номер цитаты, показанной в приветствии в прошлый раз. */
+    var quoteIndex: Int
+        get() = sp.getInt("quoteIndex", -1)
+        set(v) = sp.edit { putInt("quoteIndex", v) }
+
     /** Скрытые пользователем пары (свайпом в ленте). */
     var hiddenLessons: Set<String>
         get() = sp.getStringSet("hiddenLessons", emptySet()).orEmpty().toSet()
