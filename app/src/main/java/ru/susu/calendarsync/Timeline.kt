@@ -17,6 +17,19 @@ object Clock {
     fun today(): LocalDate = now().toLocalDate()
 }
 
+/** Скрытые пары: свайп в ленте сжимает пару в полоску, окна и виджет её не учитывают. */
+object Hidden {
+    fun key(l: Lesson) = "${l.key}|${l.location}"
+
+    fun isHidden(set: Set<String>, l: Lesson) = key(l) in set
+
+    /** Убираем скрытые пары старше месяца, чтобы список не рос бесконечно. */
+    fun prune(set: Set<String>, today: LocalDate): Set<String> {
+        val limit = today.minusDays(31).toString()
+        return set.filterTo(HashSet()) { it.substringBefore('|') >= limit }
+    }
+}
+
 /** Расчёты по ленте занятий без интерфейса: окна между парами, «сейчас / дальше», недели. Покрыты тестами. */
 object Timeline {
     /** Свободное окно между парами одного дня. */

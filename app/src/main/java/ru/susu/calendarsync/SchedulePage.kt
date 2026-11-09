@@ -88,24 +88,6 @@ class SchedulePage : Page() {
     private var feedLessons: List<Lesson> = emptyList()
     private var plannerByLesson: Map<String, List<PlannerItem>> = emptyMap()
 
-    private fun showBells() {
-        val ctx = requireContext()
-        val box = ctx.vertical(20)
-        val now = Clock.now().toLocalTime()
-        for (p in Bells.pairs) {
-            val row = ctx.horizontal().apply { setPadding(0, ctx.dp(6), 0, ctx.dp(6)) }
-            val current = !now.isBefore(p.start1) && now.isBefore(p.end2)
-            row.addView(ctx.text("${p.number}", 18f, bold = true).apply {
-                width = ctx.dp(36)
-                if (current) setTextColor(ctx.color(com.google.android.material.R.attr.colorPrimary))
-            })
-            row.addView(ctx.text(p.text, 16f, bold = current).apply {
-                if (current) setTextColor(ctx.color(com.google.android.material.R.attr.colorPrimary))
-            })
-            box.addView(row)
-        }
-        MaterialAlertDialogBuilder(ctx).setTitle("Расписание звонков").setView(box).setPositiveButton("OK", null).show()
-    }
 
     private fun choices(): List<SavedSchedule> {
         val saved = Store(requireContext()).saved()
@@ -157,8 +139,14 @@ class SchedulePage : Page() {
         page.removeView(header)
 
         val row = ctx.horizontal()
-        val selector = ctx.spinner(list.map { if (it === main.tempSchedule) "🔍 ${it.kind.label}: ${it.name}" else it.label },
+        val selector = ctx.spinner(list.map { if (it === main.tempSchedule) "🔍 ${it.kind.label}: ${it.name}" else it.label } +
+            "＋ Найти и добавить…",
             list.indexOf(current)) { i ->
+            if (i == list.size) {
+                render() // вернуть название текущего расписания на кнопку
+                SearchDialog.show(main, viewLifecycleOwner.lifecycleScope) { showQuick(it.kind, it.name, it) }
+                return@spinner
+            }
             main.selectedUid = list[i].uid
             status = ""
             updateFailed = false
@@ -169,13 +157,6 @@ class SchedulePage : Page() {
         selectorName = selector.text
         selector.tag = "tour_selector"
         row.addView(selector.weight())
-        row.addView(iconButton(R.drawable.ic_nav_search, "Поиск") {
-            SearchDialog.show(main, viewLifecycleOwner.lifecycleScope) { showQuick(it.kind, it.name, it) }
-        }.apply { tag = "tour_search" })
-        row.addView(iconButton(R.drawable.ic_today, "Сегодня") {
-            if (Prefs(ctx).weekView) { weekOffset = null; render(fade = true) }
-            else scrollToToday?.invoke() ?: run { jumpToToday = true; render() }
-        }.apply { tag = "tour_today" })
         row.addView(historyButton())
         lateinit var more: View
         more = iconButton(R.drawable.ic_more, "Ещё") { showMenu(more, current, isTemp, store) }.apply { tag = "tour_more" }
@@ -207,8 +188,18 @@ class SchedulePage : Page() {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
         ))
         header.doOnLayout { scroll.setPadding(0, header.height, 0, 0) }
+        val pill = todayPill { scrollToToday?.invoke() ?: run { weekOffset = null; jumpToToday = true; render(fade = true) } }
+        frame.addView(pill, android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ctx.dp(48), android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL,
+        ).apply { bottomMargin = ctx.dp(16) })
         var programmatic = false
+        var anchorRef: View? = null
         scroll.setOnScrollChangeListener { _, _, y, _, oldY ->
+            // Далеко от сегодняшнего дня — показываем «Вернуться к сегодня».
+            anchorRef?.let { a ->
+                val target = todayOffset(a, feed)
+                if (!programmatic) showPill(pill, kotlin.math.abs(y - target) > scroll.height * 0.7f)
+            }
             if (programmatic) return@setOnScrollChangeListener
             val h = header.height.toFloat()
             when {
@@ -225,6 +216,9 @@ class SchedulePage : Page() {
         if (Prefs(ctx).weekView) {
             scrollToToday = null
             feed.addView(weekGrid(lessons, today))
+            // Листаете другие недели — кнопка возвращает к текущей.
+            val defaultWeek = Timeline.defaultWeek(lessons, Clock.now())
+            if (weekOffset != null && weekOffset != defaultWeek) showPill(pill, true)
             return frame
         }
         val byDay = lessons.distinctBy { it.key }
@@ -237,17 +231,24 @@ class SchedulePage : Page() {
         }
         var anchor: View? = null
         var tourTagged = false
+        val prefsNow = Prefs(ctx)
+        val hidden = Hidden.prune(prefsNow.hiddenLessons, today).also { if (it.size != prefsNow.hiddenLessons.size) prefsNow.hiddenLessons = it }
         for ((date, items) in byDay) {
             val d = runCatching { LocalDate.parse(date) }.getOrNull() ?: continue
             val header2 = dayHeader(d, today)
             feed.addView(header2)
             // Якорь — заголовок сегодняшнего дня с меткой «Сегодня», а если сегодня пар нет — ближайшего дня.
             if (anchor == null && !d.isBefore(today)) anchor = header2
-            val windows = if (display.windows) Timeline.windows(items).associateBy { it.to } else emptyMap()
+            // Скрытые пары не считаются занятыми: вместо них может появиться окно.
+            val windows = if (display.windows) Timeline.windows(items.filterNot { Hidden.isHidden(hidden, it) }).associateBy { it.to } else emptyMap()
             val shown = HashSet<String>()
-            items.forEach { l ->
+            val nowDt = Clock.now()
+            val pastToday = if (d == today && display.collapsePast && !pastExpanded)
+                items.filter { bounds(it)?.second?.let { e -> !e.isAfter(nowDt) } == true } else emptyList()
+            if (pastToday.isNotEmpty()) feed.addView(pastRow(pastToday.size))
+            (items - pastToday.toSet()).forEach { l ->
                 windows[l.beginTime]?.takeIf { shown.add(it.to) }?.let { feed.addView(windowRow(it, d, today)) }
-                val card = lessonCard(l, past = d < today)
+                val card = if (Hidden.isHidden(hidden, l)) hiddenStrip(l) else swipeable(l, lessonCard(l, past = d < today))
                 // Для тура — первая пара начиная с сегодняшнего дня.
                 if (!tourTagged && !d.isBefore(today)) { card.tag = "tour_card"; tourTagged = true }
                 feed.addView(card)
@@ -255,10 +256,12 @@ class SchedulePage : Page() {
         }
         updateLive(allowRender = false)
         // Для кнопки «Сегодня»: плавная прокрутка к якорю без перестройки экрана.
+        anchorRef = anchor
         scrollToToday = if (byDay.isEmpty()) null else {
             val target = anchor
             {
                 header.animate().translationY(0f).setDuration(180).start()
+                showPill(pill, false)
                 scroll.smoothScrollTo(0, todayOffset(target, feed))
             }
         }
@@ -279,6 +282,70 @@ class SchedulePage : Page() {
     }
 
     private var scrollToToday: (() -> Unit)? = null
+
+    /** Прошедшие пары сегодня раскрыты вручную (до перезапуска экрана). */
+    private var pastExpanded = false
+
+    /** «2 пары прошли ▾» вместо карточек закончившихся сегодня пар; нажатие раскрывает их. */
+    private fun pastRow(n: Int): View {
+        val ctx = requireContext()
+        return ctx.horizontal().apply {
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(ctx.dp(16), ctx.dp(12), ctx.dp(16), ctx.dp(12))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = ctx.dp(14).toFloat()
+                setColor(ctx.color(com.google.android.material.R.attr.colorSurfaceContainerLow))
+            }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .apply { setMargins(0, ctx.dp(5), 0, ctx.dp(5)) }
+            addView(ctx.secondary(Remind.plural(n, "пара прошла", "пары прошли", "пар прошло"), 14f).weight())
+            addView(ctx.secondary("Показать ▾", 14f).apply {
+                setTextColor(ctx.color(com.google.android.material.R.attr.colorPrimary))
+            })
+            setOnClickListener { pastExpanded = true; render() }
+        }
+    }
+
+    private fun setHidden(l: Lesson, hide: Boolean) {
+        val prefs = Prefs(requireContext())
+        prefs.hiddenLessons = if (hide) prefs.hiddenLessons + Hidden.key(l) else prefs.hiddenLessons - Hidden.key(l)
+        runCatching { NowWidget.update(requireContext().applicationContext) }
+    }
+
+    /** Карточку пары можно смахнуть: она сжимается в полоску, снизу появляется «Вернуть». */
+    private fun swipeable(l: Lesson, card: View): View {
+        lateinit var row: SwipeRow
+        row = SwipeRow(requireContext(), card) {
+            setHidden(l, true)
+            SwipeRow.collapse(row, requireContext().dp(30)) { render() }
+            com.google.android.material.snackbar.Snackbar.make(requireView(), "Пара скрыта", com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
+                .setAction("Вернуть") { setHidden(l, false); render() }
+                .apply { requireActivity().findViewById<View>(R.id.bottomNav)?.let { setAnchorView(it) } }
+                .show()
+        }
+        return row
+    }
+
+    /** Скрытая пара: узкая полоска с бледным зачёркнутым глазом. Нажатие или свайп возвращают её. */
+    private fun hiddenStrip(l: Lesson): View {
+        val ctx = requireContext()
+        val strip = android.widget.FrameLayout(ctx).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = ctx.dp(15).toFloat()
+                setColor(ctx.color(com.google.android.material.R.attr.colorSurfaceContainerLow))
+            }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ctx.dp(30))
+                .apply { setMargins(0, ctx.dp(5), 0, ctx.dp(5)) }
+            contentDescription = "Скрытая пара ${l.beginTime} ${l.subject}. Нажмите, чтобы показать"
+            addView(android.widget.ImageView(ctx).apply {
+                setImageResource(R.drawable.ic_eye_off)
+                setColorFilter(ctx.color(com.google.android.material.R.attr.colorOnSurfaceVariant))
+                alpha = 0.4f
+            }, android.widget.FrameLayout.LayoutParams(ctx.dp(17), ctx.dp(17), android.view.Gravity.CENTER))
+            setOnClickListener { setHidden(l, false); render() }
+        }
+        return SwipeRow(ctx, strip) { setHidden(l, false); render() }
+    }
 
     /** Сдвиг показанной недели от текущей (вид «неделя»). */
     /** null — неделя по умолчанию: текущая, а после её последней пары — следующая. */
@@ -406,7 +473,7 @@ class SchedulePage : Page() {
         })
         val room = l.location.substringBefore(";").trim()
         if (room.isNotBlank()) v.addView(ctx.text(room, 9f, bold = true).apply {
-            setTextColor(accent); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            setTextColor(ctx.readable(accent)); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
         })
         if (cell.size > 1) v.addView(ctx.secondary("+${cell.size - 1}", 9f))
         // Прошедшие — чуть бледнее, но читаемые.
@@ -458,10 +525,61 @@ class SchedulePage : Page() {
         target?.let { (it.top + it.paddingTop - feed.context.dp(14)).coerceAtLeast(0) } ?: feed.height
 
     /** Колокольчик «Изменения» со счётчиком новых изменений с прошлого просмотра. */
-    private fun historyButton(): View {
+    private fun showBells() {
+        val ctx = requireContext()
+        val box = ctx.vertical(20)
+        val now = Clock.now().toLocalTime()
+        for (p in Bells.pairs) {
+            val row = ctx.horizontal().apply { setPadding(0, ctx.dp(6), 0, ctx.dp(6)) }
+            val current = !now.isBefore(p.start1) && now.isBefore(p.end2)
+            row.addView(ctx.text("${p.number}", 18f, bold = true).apply {
+                width = ctx.dp(36)
+                if (current) setTextColor(ctx.color(com.google.android.material.R.attr.colorPrimary))
+            })
+            row.addView(ctx.text(p.text, 16f, bold = current).apply {
+                if (current) setTextColor(ctx.color(com.google.android.material.R.attr.colorPrimary))
+            })
+            box.addView(row)
+        }
+        MaterialAlertDialogBuilder(ctx).setTitle("Расписание звонков").setView(box).setPositiveButton("OK", null).show()
+    }
+
+    /** Плавающая кнопка «Вернуться к сегодня»: появляется, когда лента ушла от сегодняшнего дня. */
+    private fun todayPill(onClick: () -> Unit) = com.google.android.material.button.MaterialButton(requireContext()).apply {
+        val ctx = requireContext()
+        text = "Вернуться к сегодня"
+        isAllCaps = false
+        cornerRadius = ctx.dp(24)
+        elevation = ctx.dp(6).toFloat()
+        setPadding(ctx.dp(20), 0, ctx.dp(20), 0)
+        visibility = View.GONE
+        alpha = 0f
+        setOnClickListener { onClick() }
+    }
+
+    private fun showPill(pill: View, show: Boolean) {
+        if (show == (pill.visibility == View.VISIBLE && pill.alpha > 0f)) return
+        if (show) {
+            pill.visibility = View.VISIBLE
+            pill.translationY = pill.context.dp(24).toFloat()
+            pill.animate().alpha(1f).translationY(0f).setDuration(200).start()
+        } else {
+            pill.animate().alpha(0f).translationY(pill.context.dp(24).toFloat()).setDuration(160)
+                .withEndAction { pill.visibility = View.GONE }.start()
+        }
+    }
+
+    /** Сколько изменений появилось с прошлого просмотра «Изменений». */
+    private fun unseenChanges(): Int {
         val ctx = requireContext()
         val seen = Prefs(ctx).historySeen
-        val unseen = ChangeLog(ctx).load().filter { it.timestamp > seen }.sumOf { it.changes.size }
+        return ChangeLog(ctx).load().filter { it.timestamp > seen }.sumOf { it.changes.size }
+    }
+
+    /** Колокольчик «Изменения» со счётчиком новых изменений с прошлого просмотра. */
+    private fun historyButton(): View {
+        val ctx = requireContext()
+        val unseen = unseenChanges()
         return android.widget.FrameLayout(ctx).apply {
             tag = "tour_history"
             addView(iconButton(R.drawable.ic_bell, "Изменения") { main.openHistory() })
@@ -656,6 +774,13 @@ class SchedulePage : Page() {
     /** Убирает служебные подписи: ФИО и номера групп понятны и так. */
     private fun stripLabel(line: String) = line.substringAfter(": ", line)
 
+    /** «Батурина Наталья Владимировна» → «Батурина Н. В.». */
+    private fun shortName(full: String): String {
+        val p = full.trim().split(Regex("\\s+"))
+        if (p.size < 2) return full
+        return p.first() + " " + p.drop(1).joinToString(" ") { it.first().uppercase() + "." }
+    }
+
     private fun lessonCard(l: Lesson, past: Boolean): View {
         val ctx = requireContext()
         val accentColor = typeColor(l.eventType)
@@ -683,13 +808,15 @@ class SchedulePage : Page() {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         val titleRow = ctx.horizontal().apply { gravity = android.view.Gravity.TOP }
-        titleRow.addView(ctx.text(l.subject, 15f, bold = true).apply {
+        val mini = display.mini
+        titleRow.addView(ctx.text(l.subject, if (mini) 14f else 15f, bold = true).apply {
             // Длинные слова переносим по слогам с дефисом, а не рвём посередине.
             hyphenationFrequency = android.text.Layout.HYPHENATION_FREQUENCY_NORMAL
             breakStrategy = android.text.Layout.BREAK_STRATEGY_HIGH_QUALITY
+            if (mini) { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
         }.weight())
         if (display.bigRoom && l.location.isNotBlank()) {
-            titleRow.addView(ctx.text(l.location, 22f, bold = true).apply {
+            titleRow.addView(ctx.text(l.location, if (mini) 18f else 22f, bold = true).apply {
                 setPadding(ctx.dp(10), 0, 0, 0)
                 gravity = android.view.Gravity.END
                 clickable { showQuick(ScheduleKind.ROOM, l.location.substringBefore(";").trim()) }
@@ -726,7 +853,8 @@ class SchedulePage : Page() {
                 line.startsWith("Преподавател") -> if (display.teacher) {
                     // Каждый преподаватель отдельной строкой — по нажатию открывается его расписание.
                     for (name in stripLabel(line).split(", ").filter { it.isNotBlank() }) {
-                        content.addView(ctx.secondary(name, 14f).apply {
+                        content.addView(ctx.secondary(if (mini) shortName(name) else name, if (mini) 13f else 14f).apply {
+                            if (mini) { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
                             setPadding(0, ctx.dp(2), 0, 0)
                             clickable { showQuick(ScheduleKind.TEACHER, name) }
                         })

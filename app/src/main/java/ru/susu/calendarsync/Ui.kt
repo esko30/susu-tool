@@ -70,7 +70,7 @@ fun Context.chip(value: String, tint: Int, filled: Boolean = false) = TextView(t
     text = value
     setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
     setTypeface(typeface, Typeface.BOLD)
-    setTextColor(if (filled) color(com.google.android.material.R.attr.colorOnPrimary) else tint)
+    setTextColor(if (filled) color(com.google.android.material.R.attr.colorOnPrimary) else readable(tint))
     setPadding(dp(10), dp(3), dp(10), dp(3))
     background = android.graphics.drawable.GradientDrawable().apply {
         cornerRadius = dp(12).toFloat()
@@ -107,11 +107,11 @@ fun Context.outlineTag(value: String, tint: Int) = TextView(this).apply {
     setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
     setTypeface(typeface, Typeface.BOLD)
     letterSpacing = 0.06f
-    setTextColor(tint)
+    setTextColor(readable(tint))
     setPadding(dp(6), dp(1), dp(6), dp(1))
     background = android.graphics.drawable.GradientDrawable().apply {
         cornerRadius = dp(5).toFloat()
-        setStroke(dp(1), tint)
+        setStroke(dp(1), readable(tint))
         setColor(android.graphics.Color.TRANSPARENT)
     }
 }
@@ -173,4 +173,38 @@ fun Context.spinner(items: List<String>, selected: Int, onSelect: (Int) -> Unit)
 fun View.weight(w: Float = 1f): View {
     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, w)
     return this
+}
+
+/** Поле ввода в рамке со скруглением — один вид во всём приложении. */
+fun Context.outlinedField(hint: String, edit: com.google.android.material.textfield.TextInputEditText) =
+    com.google.android.material.textfield.TextInputLayout(this, null, com.google.android.material.R.attr.textInputOutlinedStyle).apply {
+        this.hint = hint
+        boxBackgroundMode = com.google.android.material.textfield.TextInputLayout.BOX_BACKGROUND_OUTLINE
+        val r = dp(14).toFloat()
+        setBoxCornerRadii(r, r, r, r)
+        addView(edit)
+    }
+
+/** Короткий отклик вибрацией: скрыли пару, отметили запись, сменили вкладку. */
+fun View.haptic() {
+    performHapticFeedback(
+        if (android.os.Build.VERSION.SDK_INT >= 30) android.view.HapticFeedbackConstants.CONFIRM
+        else android.view.HapticFeedbackConstants.VIRTUAL_KEY,
+    )
+}
+
+/**
+ * Цвет текста, читаемый на фоне темы: в светлой теме слишком светлые цвета (жёлтый, салатовый)
+ * темнеют, в тёмной слишком тёмные светлеют, пока контраст с фоном не станет достаточным.
+ */
+fun Context.readable(c: Int, minContrast: Double = 3.0): Int {
+    val bg = color(com.google.android.material.R.attr.colorSurface) or 0xFF000000.toInt()
+    val dark = androidx.core.graphics.ColorUtils.calculateLuminance(bg) < 0.5
+    var out = c or 0xFF000000.toInt()
+    var step = 0
+    while (androidx.core.graphics.ColorUtils.calculateContrast(out, bg) < minContrast && step < 10) {
+        out = androidx.core.graphics.ColorUtils.blendARGB(out, if (dark) android.graphics.Color.WHITE else android.graphics.Color.BLACK, 0.12f)
+        step++
+    }
+    return out
 }

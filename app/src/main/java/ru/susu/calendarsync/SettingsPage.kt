@@ -16,11 +16,66 @@ import java.util.Locale
 
 /** Аккаунт, синхронизация с календарём, автообновление и уведомления. */
 class SettingsPage : Page() {
-    private companion object {
-        const val DONATE_URL = "https://finance.ozon.ru/apps/sbp/ozonbankpay/01a1b512-8b85-766c-84dc-2ce3951ada42"
+    /** Вернулись из системных настроек (например, разрешили работу в фоне) — обновляем экран. */
+    private var resumedOnce = false
+    override fun onResume() {
+        super.onResume()
+        if (resumedOnce) render() else resumedOnce = true
+    }
+
+    companion object {
+        const val SECTION_CALENDAR = "calendar"
+        const val SECTION_NOTIFY = "notify"
+        const val SECTION_ABOUT = "about"
+
+        fun of(section: String) = SettingsPage().apply { arguments = android.os.Bundle().apply { putString("section", section) } }
+
+        private const val DONATE_URL = "https://finance.ozon.ru/apps/sbp/ozonbankpay/01a1b512-8b85-766c-84dc-2ce3951ada42"
     }
 
     private var loading = false
+    private val section get() = arguments?.getString("section")
+
+    /** Подэкран настроек: «‹ Настройки», заголовок и содержимое. */
+    private fun subPage(title: String, fill: (android.widget.LinearLayout) -> Unit): View {
+        val ctx = requireContext()
+        val root = ctx.vertical(16)
+        root.addView(ctx.textButton("‹ Настройки") { parentFragmentManager.popBackStack() }.apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+        })
+        root.addView(ctx.title(title))
+        fill(root)
+        return ctx.scroll(root)
+    }
+
+    private fun fullWidth(v: View) = v.apply {
+        layoutParams = android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = requireContext().dp(4) }
+    }
+
+    /** Телефон ограничивает работу в фоне — показываем, как это исправить. */
+    private fun batteryWarning(root: android.widget.LinearLayout) {
+        val ctx = requireContext()
+            val pm = ctx.getSystemService(android.os.PowerManager::class.java)
+            if (pm != null && !pm.isIgnoringBatteryOptimizations(ctx.packageName)) {
+                root.addView(ctx.card(
+                    ctx.text("Проверки могут задерживаться", 15f, bold = true),
+                    ctx.secondary("Телефон экономит батарею и может откладывать фоновые проверки на часы. " +
+                        "Разрешите SUSU Tool работать в фоне, чтобы уведомления о переносах и оценках приходили вовремя."),
+                    ctx.button("Разрешить работу в фоне", outlined = true) {
+                        runCatching {
+                            startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                                .setData(android.net.Uri.parse("package:${ctx.packageName}")))
+                        }.onFailure {
+                            runCatching { startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+                        }
+                    },
+                ))
+            }
+    }
 
     private val reminderValues = listOf(0, 5, 10, 15, 30, 60)
     private val reminderLabels = listOf("Без напоминания", "За 5 минут", "За 10 минут", "За 15 минут", "За 30 минут", "За 1 час")
@@ -32,62 +87,10 @@ class SettingsPage : Page() {
         val ctx = requireContext()
         val prefs = Prefs(ctx)
         val root = ctx.vertical(16)
-        root.addView(ctx.title("Настройки"))
 
-        // Аккаунт.
-        root.addView(ctx.section("Аккаунт ЮУрГУ-Онлайн"))
-        if (prefs.displayName.isNotBlank()) root.addView(ctx.secondary(prefs.displayName))
-        val loginInput = TextInputEditText(ctx).apply {
-            setText(prefs.login)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-        }
-        root.addView(TextInputLayout(ctx).apply { hint = "Логин"; addView(loginInput) })
-        val passInput = TextInputEditText(ctx).apply {
-            setText(prefs.password)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-        }
-        root.addView(TextInputLayout(ctx).apply {
-            hint = "Пароль"
-            endIconMode = TextInputLayout.END_ICON_PASSWORD_TOGGLE
-            addView(passInput)
-        })
-        root.addView(ctx.button(if (loading) "Синхронизация…" else "Сохранить и синхронизировать всё") {
-            val login = loginInput.text.toString().trim()
-            val pass = passInput.text.toString()
-            if (login.isEmpty() || pass.isEmpty()) {
-                prefs.lastStatus = "Заполните логин и пароль"
-                render()
-                return@button
-            }
-            if (login != prefs.login || pass != prefs.password) Session.reset()
-            prefs.login = login
-            prefs.password = pass
-            main.withPermissions { syncAll() }
-        }.apply { isEnabled = !loading })
-        if (prefs.lastStatus.isNotBlank()) {
-            root.addView(ctx.secondary(prefs.lastStatus).apply { setPadding(0, ctx.dp(6), 0, 0); setTextIsSelectable(true) })
-        }
-
-        // Внешний вид — отдельный экран.
-        root.addView(ctx.section("Внешний вид"))
-        root.addView(ctx.card(
-            ctx.text("Внешний вид  ›", 16f, bold = true),
-            ctx.secondary("Тема, карточки пар, прогресс и анимации"),
-        ) { main.openAppearance() })
-
-        // Поддержка проекта.
-        root.addView(ctx.section("Поддержать SUSU Tool"))
-        root.addView(ctx.card(
-            ctx.text("Пожертвовать  ›", 16f, bold = true),
-            ctx.secondary("Если приложение помогает, можно поддержать разработку переводом через СБП."),
-        ) {
-            runCatching {
-                startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(DONATE_URL)))
-            }
-        })
-
+        when (section) {
+            SECTION_CALENDAR -> return subPage("Календарь телефона") { root ->
         // Календарь.
-        root.addView(ctx.section("Календарь телефона"))
         root.addView(ctx.secondary("В календарь попадают расписания, у которых включено «Добавлять в календарь». " +
             "Для каждого создаётся отдельный календарь SUSU Tool."))
         root.addView(ctx.text("Промежуток синхронизации", 14f).apply { setPadding(0, ctx.dp(10), 0, 0) })
@@ -109,13 +112,21 @@ class SettingsPage : Page() {
         })
         root.addView(ctx.secondary("Новые настройки календаря применяются при следующей синхронизации."))
 
+            }
+            SECTION_NOTIFY -> return subPage("Уведомления и звуки") { root ->
         // Автообновление и уведомления.
-        root.addView(ctx.section("Автообновление и уведомления"))
         root.addView(ctx.text("Проверять изменения", 14f))
         root.addView(ctx.spinner(intervalLabels, intervalValues.indexOf(prefs.syncIntervalHours).coerceAtLeast(0)) { i ->
             prefs.syncIntervalHours = intervalValues[i]
             SyncWorker.schedule(ctx.applicationContext)
+            render()
         })
+        if (prefs.syncIntervalHours > 0) {
+            val last = prefs.lastBackgroundCheck
+            root.addView(ctx.secondary(if (last == 0L) "Фоновая проверка ещё не запускалась"
+                else "Последняя фоновая проверка: " + java.text.SimpleDateFormat("d MMMM, HH:mm", java.util.Locale("ru")).format(java.util.Date(last))))
+            batteryWarning(root)
+        }
         root.addView(ctx.switch("Уведомлять о новых КРМ и изменениях оценок", prefs.monitorGrades) { prefs.monitorGrades = it })
         root.addView(ctx.secondary("Уведомления о переносах приходят по расписаниям, у которых включено «Следить за изменениями»."))
 
@@ -138,13 +149,12 @@ class SettingsPage : Page() {
         soundPicker("Звук: изменения в расписании", prefs.soundSchedule) { prefs.soundSchedule = it }
         soundPicker("Звук: оценки и КРМ", prefs.soundGrades) { prefs.soundGrades = it }
 
+            }
+            SECTION_ABOUT -> return subPage("О приложении") { root ->
         // Помощь: тур и приветствие можно открыть снова.
         root.addView(ctx.section("Помощь"))
-        val help = ctx.horizontal()
-        help.addView(ctx.button("Тур по приложению", outlined = true) { main.startTour() }.weight())
-        help.addView(View(ctx).apply { layoutParams = android.widget.LinearLayout.LayoutParams(ctx.dp(8), 1) })
-        help.addView(ctx.button("Приветствие", outlined = true) { main.showOnboarding() }.weight())
-        root.addView(help)
+        root.addView(fullWidth(ctx.button("Тур по приложению", outlined = true) { main.startTour() }))
+        root.addView(fullWidth(ctx.button("Приветствие", outlined = true) { main.showOnboarding() }))
 
         // Обновления через GitHub Releases.
         root.addView(ctx.section("Обновления"))
@@ -192,11 +202,74 @@ class SettingsPage : Page() {
             ).apply { setPadding(0, ctx.dp(6), 0, 0); setLineSpacing(0f, 1.15f) },
         ))
 
-        // Выход.
-        root.addView(ctx.section("Выход"))
-        root.addView(ctx.textButton("Выйти и удалить все данные и календари") { confirmReset() })
         root.addView(ctx.secondary("SUSU Tool · версия ${BuildConfig.VERSION_NAME}").apply { setPadding(0, ctx.dp(16), 0, 0) })
+            }
+        }
+        root.addView(ctx.title("Настройки"))
+        // Аккаунт.
+        root.addView(ctx.section("Аккаунт ЮУрГУ-Онлайн"))
+        if (prefs.hasCredentials) root.addView(profileCard()) else {
+        val loginInput = TextInputEditText(ctx).apply {
+            setText(prefs.login)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+        }
+        root.addView(ctx.outlinedField("Логин", loginInput).apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = ctx.dp(8) }
+        })
+        val passInput = TextInputEditText(ctx).apply {
+            setText(prefs.password)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        root.addView(ctx.outlinedField("Пароль", passInput).apply {
+            endIconMode = TextInputLayout.END_ICON_PASSWORD_TOGGLE
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = ctx.dp(8) }
+        })
+        root.addView(ctx.button(if (loading) "Синхронизация…" else "Сохранить и синхронизировать всё") {
+            val login = loginInput.text.toString().trim()
+            val pass = passInput.text.toString()
+            if (login.isEmpty() || pass.isEmpty()) {
+                prefs.lastStatus = "Заполните логин и пароль"
+                render()
+                return@button
+            }
+            if (login != prefs.login || pass != prefs.password) Session.reset()
+            prefs.login = login
+            prefs.password = pass
+            main.withPermissions { syncAll() }
+        }.apply { isEnabled = !loading })
+        }
+        if (!prefs.hasCredentials && prefs.lastStatus.isNotBlank()) {
+            root.addView(ctx.secondary(prefs.lastStatus).apply { setPadding(0, ctx.dp(6), 0, 0); setTextIsSelectable(true) })
+        }
 
+        // Разделы — отдельные экраны, как «Внешний вид».
+        if (prefs.syncIntervalHours > 0) batteryWarning(root)
+        fun link(title: String, sub: String, open: () -> Unit) = root.addView(ctx.card(
+            ctx.text("$title  ›", 16f, bold = true), ctx.secondary(sub),
+        ) { open() })
+        root.addView(ctx.section("Настройки"))
+        link("Внешний вид", "Тема, карточки пар, прогресс и анимации") { main.openAppearance() }
+        link("Уведомления и звуки", "Проверка изменений, оценки, звуки") { main.openSettings(SECTION_NOTIFY) }
+        link("Календарь телефона", "Пары в календаре, промежуток, напоминания") { main.openSettings(SECTION_CALENDAR) }
+        // Поддержка проекта.
+        root.addView(ctx.section("Поддержать SUSU Tool"))
+        root.addView(ctx.card(
+            ctx.text("Пожертвовать  ›", 16f, bold = true),
+            ctx.secondary("Если приложение помогает, можно поддержать разработку переводом через СБП."),
+        ) {
+            runCatching {
+                startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(DONATE_URL)))
+            }
+        })
+
+
+        root.addView(ctx.section("Приложение"))
+        link("О приложении", "Помощь, обновления, «Что нового», данные и безопасность") { main.openSettings(SECTION_ABOUT) }
+        root.addView(ctx.secondary("SUSU Tool · версия ${BuildConfig.VERSION_NAME}").apply { setPadding(0, ctx.dp(16), 0, 0) })
         return ctx.scroll(root)
     }
 
@@ -253,7 +326,6 @@ class SettingsPage : Page() {
         val ctx = requireContext().applicationContext
         val prefs = Prefs(ctx)
         loading = true
-        prefs.lastStatus = "Синхронизация…"
         render()
         background({ Syncer.run(ctx) }) { r ->
             loading = false
@@ -263,10 +335,88 @@ class SettingsPage : Page() {
         }
     }
 
+    /** Аватарка, ФИО и группа с портала; синхронизация и выход. */
+    private fun profileCard(): View {
+        val ctx = requireContext()
+        val prefs = Prefs(ctx)
+        val name = prefs.displayName.ifBlank { prefs.login }
+        val group = Profile.group(ctx)
+        val row = ctx.horizontal().apply { gravity = android.view.Gravity.CENTER_VERTICAL }
+        row.addView(Profile.view(ctx, 64, name) { avatarMenu() })
+        row.addView(ctx.vertical().apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                .apply { marginStart = ctx.dp(16) }
+            addView(ctx.text(name, 18f, bold = true))
+            if (group.isNotBlank()) addView(ctx.secondary(if (prefs.login.isNotBlank()) "$group · ${prefs.login}" else group, 14f))
+        })
+        val buttons = ctx.horizontal().apply { setPadding(0, ctx.dp(14), 0, 0) }
+        val sync = ctx.button("Обновить") {
+            main.withPermissions { syncAll() }
+        } as com.google.android.material.button.MaterialButton
+        sync.apply {
+            isEnabled = !loading
+            iconGravity = com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_START
+            iconPadding = ctx.dp(8)
+            icon = if (loading) com.google.android.material.progressindicator.IndeterminateDrawable.createCircularDrawable(
+                ctx, com.google.android.material.progressindicator.CircularProgressIndicatorSpec(ctx, null).apply {
+                    indicatorSize = ctx.dp(18); trackThickness = ctx.dp(2)
+                },
+            ) else androidx.core.content.ContextCompat.getDrawable(ctx, R.drawable.ic_refresh)
+        }
+        buttons.addView(sync.weight())
+        buttons.addView(View(ctx).apply { layoutParams = android.widget.LinearLayout.LayoutParams(ctx.dp(10), 1) })
+        buttons.addView(ctx.button("Выйти", outlined = true) { confirmReset() }.weight())
+
+        // Итог последнего обновления одной строкой, ошибки отдельно.
+        val status = ctx.vertical().apply { setPadding(ctx.dp(2), ctx.dp(10), 0, 0) }
+        if (!loading && prefs.lastSyncAt > 0) {
+            val n = prefs.lastSyncLessons
+            status.addView(ctx.secondary("Обновлено ${whenText(prefs.lastSyncAt)}" +
+                if (n > 0) " · ${Remind.plural(n, "пара", "пары", "пар")}" else "", 13f))
+        }
+        val err = prefs.lastStatus.takeIf { !loading && it.isNotBlank() && !it.startsWith("Синхронизация") }
+        if (err != null) status.addView(ctx.text(err, 13f, colorAttr = com.google.android.material.R.attr.colorError).apply {
+            setTextIsSelectable(true)
+        })
+        return ctx.card(row, buttons, status)
+    }
+
+    /** «сегодня в 17:17», «вчера в 09:05», «7 ноября в 12:00». */
+    private fun whenText(ms: Long): String {
+        val t = java.time.Instant.ofEpochMilli(ms).atZone(CalendarSync.SUSU_ZONE)
+        val today = java.time.LocalDate.now(CalendarSync.SUSU_ZONE)
+        val hm = t.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+        return when (t.toLocalDate()) {
+            today -> "сегодня в $hm"
+            today.minusDays(1) -> "вчера в $hm"
+            else -> t.format(java.time.format.DateTimeFormatter.ofPattern("d MMMM", java.util.Locale("ru"))) + " в $hm"
+        }
+    }
+
+    /** Нажатие на аватарку: своё фото, как на портале или без фото. */
+    private fun avatarMenu() {
+        val ctx = requireContext()
+        val options = buildList {
+            add("Выбрать фото" to {
+                main.pickPhotos { uris ->
+                    val uri = uris.firstOrNull() ?: return@pickPhotos
+                    val app = ctx.applicationContext
+                    background({ Profile.setCustom(app, uri) }) { render() }
+                }
+            })
+            if (Profile.hasPortalAvatar(ctx)) add("Как на портале" to { Prefs(ctx).avatarMode = Profile.AVATAR_PORTAL; render() })
+            add("Без фото" to { Prefs(ctx).avatarMode = Profile.AVATAR_NONE; render() })
+        }
+        MaterialAlertDialogBuilder(ctx)
+            .setTitle("Аватарка")
+            .setItems(options.map { it.first }.toTypedArray()) { _, i -> options[i].second() }
+            .show()
+    }
+
     private fun confirmReset() {
         val ctx = requireContext()
         MaterialAlertDialogBuilder(ctx)
-            .setTitle("Выйти?")
+            .setTitle("Выйти из аккаунта?")
             .setMessage("Будут удалены все календари SUSU Tool с занятиями, сохранённые расписания, оценки, история изменений и учётные данные.")
             .setPositiveButton("Удалить") { _, _ ->
                 val app = ctx.applicationContext
@@ -278,6 +428,7 @@ class SettingsPage : Page() {
                     GradesStore(app).clearAll()
                     ChangeLog(app).clear()
                     Planner.clear(app)
+                    Profile.clear(app)
                     Prefs(app).clear()
                     Session.reset()
                 }) {

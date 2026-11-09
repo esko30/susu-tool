@@ -285,6 +285,22 @@ class TimelineTest {
         assertEquals(listOf(c), Timeline.upcoming(listOf(a, b, c), LocalDateTime.parse("2026-11-10T11:20")))
     }
 
+    @Test fun hiddenLessonsAndWindows() {
+        val a = l("08:00", "09:35")
+        val b = l("09:45", "11:20")
+        val c = l("13:35", "15:10")
+        val subgroup = b.copy(location = "300/1")
+        val hidden = setOf(Hidden.key(b))
+        assertTrue(Hidden.isHidden(hidden, b))
+        assertFalse(Hidden.isHidden(hidden, subgroup))
+        // Скрытая пара освобождает время: окно от конца первой пары до третьей.
+        val visible = listOf(a, b, c).filterNot { Hidden.isHidden(hidden, it) }
+        assertEquals(listOf(Timeline.Window("09:35", "13:35", 240)), Timeline.windows(visible))
+        // Старые скрытые пары чистятся через месяц.
+        val old = Hidden.key(l("08:00", "09:35", date = "2026-09-01"))
+        assertEquals(hidden, Hidden.prune(hidden + old, LocalDate.parse("2026-11-10")))
+    }
+
     @Test fun weekStartsOnMonday() {
         var d = LocalDate.parse("2026-11-01")
         repeat(14) {

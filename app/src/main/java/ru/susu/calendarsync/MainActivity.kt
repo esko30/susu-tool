@@ -79,6 +79,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         b.bottomNav.setOnItemSelectedListener { item ->
+            if (item.itemId != b.bottomNav.selectedItemId) b.bottomNav.haptic()
             showPage(tabs.indexOf(item.itemId))
             true
         }
@@ -88,13 +89,21 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState == null) {
             showTab(start)
             if (target == Syncer.TAB_HISTORY) b.root.post { openHistory() }
+            handleShortcut(intent)
             if (!Prefs(this).onboardingDone) b.root.post { Onboarding.show(this) }
             else {
                 b.root.post { WhatsNew.showIfUpdated(this) }
                 Updater.autoCheck(this, lifecycleScope)
                 runCatching { NowWidget.update(this) }
+                runCatching { SyncWorker.ensure(applicationContext) }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Вернулись в приложение спустя долгое время — ещё раз проверим обновления.
+        Updater.autoCheck(this, lifecycleScope, Updater.RESUME_CHECK_MS)
     }
 
     fun openPass() = showTab(Syncer.TAB_PASS)
@@ -107,17 +116,14 @@ class MainActivity : AppCompatActivity() {
         fun tab(id: Int): () -> View? = { b.bottomNav.findViewById(id) }
         val steps = listOf(
             TourStep(tagged("tour_selector"), "Выбор расписания",
-                "Своё расписание, сохранённые группы, преподаватели и аудитории, а также открытые из поиска."),
-            TourStep(tagged("tour_search"), "Поиск",
-                "Группы, преподаватели и аудитории. Результаты появляются по мере ввода, нажмите на результат, чтобы открыть расписание."),
-            TourStep(tagged("tour_today"), "Сегодня", "Вернуться к сегодняшнему дню из любого места ленты."),
+                "Своё расписание и сохранённые. Последний пункт «Найти и добавить» ищет группы, преподавателей и аудитории."),
             TourStep(tagged("tour_history"), "Изменения",
                 "Что изменилось в расписаниях и оценках. Число на колокольчике показывает новые изменения с прошлого просмотра."),
             TourStep(tagged("tour_more"), "Меню расписания",
-                "Обновить, расписание звонков, вид «неделя», уведомления о переносах, перенос пар в календарь, сохранить или удалить расписание."),
+                "Обновить, вид «неделя», расписание звонков, уведомления о переносах и перенос пар в календарь."),
             TourStep(tagged("tour_card"), "Карточка пары",
                 "Нажмите на пару, чтобы отметить контрольную или коллоквиум и поставить напоминание. " +
-                    "Нажатие на аудиторию, преподавателя или группу открывает их расписание."),
+                    "Смахните пару в сторону, чтобы скрыть её."),
             TourStep(tab(R.id.nav_planner), "Планер", "Все записи по дням. Отметьте выполненное или поправьте напоминание."),
             TourStep(tab(R.id.nav_grades), "Оценки",
                 "Рейтинг по дисциплинам. Откройте дисциплину и нажмите «Что если», чтобы задать будущие баллы за КРМ и посмотреть прогноз оценки."),
@@ -140,6 +146,9 @@ class MainActivity : AppCompatActivity() {
 
     fun openAppearance() = openNested(AppearancePage(), "appearance")
 
+    /** Подэкран настроек: календарь, уведомления, «О приложении». */
+    fun openSettings(section: String) = openNested(SettingsPage.of(section), "settings_$section")
+
     /** Экран дисциплины с «Что если». */
     fun openSubject(term: Int, key: String) = openNested(SubjectPage.of(term, key), "subject")
 
@@ -148,14 +157,30 @@ class MainActivity : AppCompatActivity() {
 
     private fun openNested(page: Fragment, name: String) {
         supportFragmentManager.beginTransaction()
-            .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out, android.R.anim.fade_in, android.R.anim.fade_out)
+            .setCustomAnimations(R.anim.push_in, R.anim.push_out, R.anim.pop_in, R.anim.pop_out)
             .replace(R.id.container, page)
             .addToBackStack(name)
             .commit()
     }
 
+    /** Ярлыки на иконке приложения: «Пропуск» и «Новая запись». */
+    private fun handleShortcut(intent: Intent?) {
+        when (intent?.action) {
+            "ru.susu.calendarsync.OPEN_PASS" -> showTab(Syncer.TAB_PASS)
+            "ru.susu.calendarsync.NEW_ENTRY" -> {
+                showTab(Syncer.TAB_PLANNER)
+                b.root.post {
+                    PlannerSheet.showCustom(this, null) {
+                        (supportFragmentManager.findFragmentById(R.id.container) as? Page)?.render()
+                    }
+                }
+            }
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        handleShortcut(intent)
         when (val t = intent.getIntExtra(Notifier.EXTRA_TAB, -1)) {
             -1 -> Unit
             Syncer.TAB_HISTORY -> { showTab(Syncer.TAB_SCHEDULE); b.root.post { openHistory() } }
@@ -177,7 +202,9 @@ class MainActivity : AppCompatActivity() {
         }
         // При смене вкладки закрываем вложенные экраны (например, «Внешний вид»).
         supportFragmentManager.popBackStack(null, androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
-        supportFragmentManager.beginTransaction().replace(R.id.container, page).commit()
+        supportFragmentManager.beginTransaction()
+            .setCustomAnimations(R.anim.tab_in, R.anim.tab_out)
+            .replace(R.id.container, page).commit()
     }
 
     fun openTemp(s: SavedSchedule, lessons: List<Lesson>) {

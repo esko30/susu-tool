@@ -18,6 +18,7 @@ object Session {
         auth = result
         prefs.displayName = result.displayName
         Store(context).ensureOwnSchedule(result)
+        Profile.fetchOnce(context, result.accessToken)
         return result
     }
 

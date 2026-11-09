@@ -32,6 +32,10 @@ class AppearancePage : Page() {
         })
 
         root.addView(ctx.section("Карточки пар"))
+        root.addView(ctx.text("Размер карточек", 14f))
+        root.addView(ctx.spinner(listOf("Нормальный", "Мини: название в 2 строки, преподаватель кратко"), if (d.mini) 1 else 0) { i ->
+            prefs.display = prefs.display.copy(mini = i == 1)
+        })
         opt("Аудитория крупно", d.bigRoom) { o, v -> o.copy(bigRoom = v) }
         opt("Лейбл типа занятия (ЛЕК, СЕМ)", d.typeTag) { o, v -> o.copy(typeTag = v) }
         opt("Цветной градиент по типу занятия", d.gradient) { o, v -> o.copy(gradient = v) }
@@ -48,6 +52,7 @@ class AppearancePage : Page() {
 
         root.addView(ctx.section("Лента"))
         opt("Скрывать прошедшие дни", d.hidePast) { o, v -> o.copy(hidePast = v) }
+        opt("Сворачивать прошедшие пары сегодня", d.collapsePast) { o, v -> o.copy(collapsePast = v) }
         opt("Свободные окна между парами", d.windows) { o, v -> o.copy(windows = v) }
 
         root.addView(ctx.section("Пропуск"))

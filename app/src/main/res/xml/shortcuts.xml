@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Долгое нажатие на иконку приложения: пропуск и новая запись в планере. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="pass"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_pass"
+        android:shortcutShortLabel="@string/shortcut_pass">
+        <intent
+            android:action="ru.susu.calendarsync.OPEN_PASS"
+            android:targetPackage="ru.susu.calendarsync"
+            android:targetClass="ru.susu.calendarsync.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="new_entry"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_add"
+        android:shortcutShortLabel="@string/shortcut_new_entry">
+        <intent
+            android:action="ru.susu.calendarsync.NEW_ENTRY"
+            android:targetPackage="ru.susu.calendarsync"
+            android:targetClass="ru.susu.calendarsync.MainActivity" />
+    </shortcut>
+</shortcuts>

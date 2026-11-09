@@ -2,4 +2,6 @@
 <resources>
     <string name="app_name">SUSU Tool</string>
     <string name="widget_description">Ближайшие пары списком, идущая подсвечена</string>
+    <string name="shortcut_pass">Пропуск</string>
+    <string name="shortcut_new_entry">Новая запись</string>
 </resources>

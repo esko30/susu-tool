@@ -255,6 +255,10 @@ class PlannerReceiver : BroadcastReceiver() {
 /** Восстанавливает напоминания планера после перезагрузки телефона. */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED) Planner.rescheduleAll(context)
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            Planner.rescheduleAll(context)
+            runCatching { SyncWorker.ensure(context) }
+            runCatching { NowWidget.update(context) }
+        }
     }
 }

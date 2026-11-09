@@ -55,6 +55,10 @@ data class DisplayOptions(
     val typeTag: Boolean = true,
     val gradient: Boolean = true,
     val compact: Boolean = false,
+    /** Карточки «Мини»: название в две строки, короткое ФИО. Отдельно от «Компактных» (те только уменьшают отступы). */
+    val mini: Boolean = false,
+    /** Прошедшие пары сегодняшнего дня свёрнуты в одну строку «2 пары прошли». */
+    val collapsePast: Boolean = true,
     /** Плашка «Окно 1 ч 40 мин» между парами. */
     val windows: Boolean = true,
     /** 0 — как в системе, 1 — светлая, 2 — тёмная. */

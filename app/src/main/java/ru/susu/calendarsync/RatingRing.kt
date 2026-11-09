@@ -8,12 +8,12 @@ import android.widget.FrameLayout
 import com.google.android.material.progressindicator.CircularProgressIndicator
 
 /** Цвет рейтинга: без баллов — серый, дальше по порогам оценок. */
-fun Context.ratingColor(r: Double?) = when {
+fun Context.ratingColor(r: Double?): Int = when {
     r == null || r == 0.0 -> color(com.google.android.material.R.attr.colorOnSurfaceVariant)
-    r >= 85 -> Color.rgb(76, 175, 80)
-    r >= 75 -> Color.rgb(192, 202, 51)
-    r >= 60 -> Color.rgb(255, 152, 0)
-    else -> Color.rgb(239, 83, 80)
+    r >= 85 -> readable(Color.rgb(76, 175, 80))
+    r >= 75 -> readable(Color.rgb(192, 202, 51))
+    r >= 60 -> readable(Color.rgb(255, 152, 0))
+    else -> readable(Color.rgb(239, 83, 80))
 }
 
 /** Кольцо рейтинга с числом внутри; [set] плавно меняет значение. */

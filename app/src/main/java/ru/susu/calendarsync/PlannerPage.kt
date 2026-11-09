@@ -75,7 +75,8 @@ class PlannerPage : Page() {
         row.addView(MaterialCheckBox(ctx).apply {
             isChecked = item.done
             contentDescription = "Выполнено"
-            setOnCheckedChangeListener { _, v ->
+            setOnCheckedChangeListener { box, v ->
+                box.haptic()
                 Planner.save(ctx, item.copy(done = v))
                 render()
             }

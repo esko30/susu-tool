@@ -106,11 +106,10 @@ object Syncer {
             }
         }
 
-        val time = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("ru")).format(Date())
-        buildString {
-            append("Синхронизация в $time, ${auth.displayName}\nЗанятий в моём расписании: $lessonsCount")
-            if (errors.isNotEmpty()) append("\nОшибки:\n").append(errors.joinToString("\n"))
-        }
+        // Время и число пар показываются в карточке профиля; в статусе остаются только ошибки.
+        prefs.lastSyncAt = System.currentTimeMillis()
+        prefs.lastSyncLessons = lessonsCount
+        errors.joinToString("\n")
     }
 
     fun hasCalendarPermission(context: Context) = listOf(
@@ -123,8 +122,16 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
     companion object {
         private const val WORK_NAME = "susu_periodic_sync"
 
-        /** Перепланирует автосинхронизацию по текущим настройкам. */
-        fun schedule(context: Context) {
+        /**
+         * Следит, чтобы фоновая проверка стояла в очереди: при запуске приложения, после перезагрузки
+         * и обновления. Таймер не сбрасывается (KEEP), если задача уже есть.
+         */
+        fun ensure(context: Context) = enqueue(context, ExistingPeriodicWorkPolicy.KEEP)
+
+        /** Перепланирует автосинхронизацию по текущим настройкам (после смены интервала). */
+        fun schedule(context: Context) = enqueue(context, ExistingPeriodicWorkPolicy.UPDATE)
+
+        private fun enqueue(context: Context, policy: ExistingPeriodicWorkPolicy) {
             val prefs = Prefs(context)
             val hours = prefs.syncIntervalHours
             val wm = WorkManager.getInstance(context)
@@ -134,13 +141,15 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             }
             val request = PeriodicWorkRequestBuilder<SyncWorker>(hours.toLong(), TimeUnit.HOURS)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
                 .build()
-            wm.enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
+            wm.enqueueUniquePeriodicWork(WORK_NAME, policy, request)
         }
     }
 
     override suspend fun doWork(): Result {
         val prefs = Prefs(applicationContext)
+        prefs.lastBackgroundCheck = System.currentTimeMillis()
         return try {
             prefs.lastStatus = Syncer.run(applicationContext)
             Result.success()

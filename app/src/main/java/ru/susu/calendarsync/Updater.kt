@@ -26,7 +26,8 @@ data class UpdateInfo(val version: String, val notes: String, val apkUrl: String
  * скачать APK. Установку подтверждает пользователь в системном окне Android.
  */
 object Updater {
-    private const val DAY_MS = 24 * 3600_000L
+    const val RESUME_CHECK_MS = 6 * 3600_000L
+    @Volatile private var checking = false
 
     val enabled get() = BuildConfig.UPDATE_REPO.isNotBlank()
 
@@ -71,12 +72,16 @@ object Updater {
     }
 
     /** Проверка при запуске — не чаще раза в сутки и только если не отключена в настройках. */
-    fun autoCheck(activity: Activity, scope: LifecycleCoroutineScope) {
+    /** Проверка при запуске; [minIntervalMs] — не чаще этого (0 — всегда, при каждом запуске). */
+    fun autoCheck(activity: Activity, scope: LifecycleCoroutineScope, minIntervalMs: Long = 0) {
         val prefs = Prefs(activity)
         if (!enabled || !prefs.autoUpdateCheck) return
-        if (System.currentTimeMillis() - prefs.lastUpdateCheck < DAY_MS) return
+        if (System.currentTimeMillis() - prefs.lastUpdateCheck < minIntervalMs) return
+        if (checking) return
+        checking = true
         scope.launch {
             val info = withContext(Dispatchers.IO) { runCatching { check() }.getOrNull() }
+            checking = false
             prefs.lastUpdateCheck = System.currentTimeMillis()
             if (info != null && info.version != prefs.skippedVersion && !activity.isFinishing) offer(activity, scope, info)
         }

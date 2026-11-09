@@ -59,7 +59,8 @@ class NowWidget : AppWidgetProvider() {
         private fun lessons(context: Context): List<Lesson> {
             val store = Store(context)
             val s = store.own() ?: store.saved().firstOrNull() ?: return emptyList()
-            return store.lessons(s.uid)
+            val hidden = Prefs(context).hiddenLessons
+            return store.lessons(s.uid).filterNot { Hidden.isHidden(hidden, it) }
         }
 
         private fun start(l: Lesson) = LocalDateTime.parse("${l.date}T${l.beginTime}")

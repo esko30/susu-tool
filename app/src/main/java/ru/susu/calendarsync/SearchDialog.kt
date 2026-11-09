@@ -42,10 +42,8 @@ object SearchDialog {
             setSingleLine()
             imeOptions = EditorInfo.IME_ACTION_SEARCH
         }
-        top.addView(TextInputLayout(ctx).apply {
-            hint = "Группа, преподаватель или аудитория"
+        top.addView(ctx.outlinedField("Группа, преподаватель или аудитория", input).apply {
             endIconMode = TextInputLayout.END_ICON_CLEAR_TEXT
-            addView(input)
         }.weight())
         root.addView(top)
 

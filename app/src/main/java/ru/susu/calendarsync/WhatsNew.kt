@@ -1,35 +1,69 @@
 package ru.susu.calendarsync
 
+import android.app.Dialog
 import android.content.Context
-import com.google.android.material.bottomsheet.BottomSheetDialog
+import android.graphics.drawable.GradientDrawable
+import android.view.Gravity
+import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.LinearLayout
 
 /**
- * «Что нового»: список изменений по версиям. После обновления показывается один раз сам,
+ * «Что нового»: отдельный экран с иконками новых функций. После обновления показывается один раз сам,
  * в любое время — из настроек. Новую версию добавляйте в начало списка.
  */
 object WhatsNew {
-    private data class Release(val version: String, val items: List<String>)
+    private data class Feature(val icon: Int, val tint: Int, val title: String, val text: String)
+    private data class Release(val version: String, val features: List<Feature>)
+
+    private const val BLUE = 0xFF378ADD.toInt()
+    private const val GREEN = 0xFF1D9E75.toInt()
+    private const val TEAL = 0xFF00897B.toInt()
+    private const val PURPLE = 0xFF8E24AA.toInt()
+    private const val ORANGE = 0xFFE65100.toInt()
+    private const val SLATE = 0xFF546E7A.toInt()
+    private const val INDIGO = 0xFF3F51B5.toInt()
+    private const val PINK = 0xFFD81B60.toInt()
 
     private val RELEASES = listOf(
+        Release("2.3", listOf(
+            Feature(R.drawable.ic_eye_off, SLATE, "Скрытие пар",
+                "Преподаватель неофициально отменил пару или вас на ней не будет? Смахните пару в сторону, и она свернётся " +
+                    "в узкую полоску, а на её месте появится окно. Нажмите на полоску, чтобы вернуть."),
+            Feature(R.drawable.ic_nav_search, GREEN, "Свободная шапка",
+                "Поиск теперь в меню выбора расписания: «Найти и добавить», звонки в меню ⋮, а кнопка " +
+                    "«Вернуться к сегодня» появляется сама, когда вы листаете ленту."),
+            Feature(R.drawable.ic_bell, ORANGE, "Надёжные уведомления",
+                "Проверка изменений восстанавливается после перезагрузки и обновления. В настройках видно, когда она была последний раз."),
+            Feature(R.drawable.ic_nav_settings, PURPLE, "Профиль",
+                "В настройках аватарка, ФИО и группа с портала. Нажмите на аватарку, чтобы поставить своё фото."),
+            Feature(R.drawable.ic_grid, INDIGO, "Карточки «Мини»",
+                "Внешний вид → Размер карточек: название в две строки и короткое ФИО, на экран влезает весь день. " +
+                    "Прошедшие сегодня пары сворачиваются в одну строку."),
+            Feature(R.drawable.ic_nav_pass, ORANGE, "Быстрые ярлыки",
+                "Долгое нажатие на иконку приложения: «Пропуск» и «Новая запись» сразу, без лишних касаний."),
+            Feature(R.drawable.ic_nav_settings, SLATE, "Аккуратные настройки",
+                "Разделы на отдельных экранах: уведомления, календарь, о приложении."),
+            Feature(R.drawable.ic_update, BLUE, "Обновления сразу",
+                "Новая версия проверяется при каждом запуске приложения."),
+        )),
         Release("2.2", listOf(
-            "Виджет на главный экран с ближайшими парами и записями планера на сегодня.",
-            "Вид «неделя»: расписание сеткой по парам и дням. Включается в меню ⋮ расписания.",
-            "Свободные окна между парами прямо в ленте.",
-            "Планер: контрольные, коллоквиумы и домашние задания к нужной паре.",
-            "Свои записи в планере с любой датой и временем.",
-            "Фото к записям планера: из галереи или с камеры, можно поделиться.",
-            "Прогноз оценки по формуле портала: по БРС и с экзаменом при отказе от БРС.",
-            "Поиск находит фамилии с буквой «ё».",
-            "Несколько напоминаний к одной записи, за любое число минут, часов или дней.",
-            "«Что если» на отдельном экране дисциплины: задайте будущие баллы за КРМ и посмотрите прогноз.",
-            "Оценки разбиты по форме контроля и отсортированы по рейтингу.",
-            "Поиск и изменения теперь в шапке расписания, пропуск на нижней панели.",
-            "Нажатие на группу открывает её расписание.",
-            "Приветствие и тур по приложению.",
+            Feature(R.drawable.ic_widgets, INDIGO, "Виджет",
+                "Ближайшие пары на главном экране. Растяните виджет, чтобы видеть больше."),
+            Feature(R.drawable.ic_grid, BLUE, "Неделя и окна",
+                "Расписание сеткой по дням, свободные окна между парами прямо в ленте."),
+            Feature(R.drawable.ic_nav_planner, TEAL, "Планер",
+                "Контрольные, коллоквиумы и задания к нужной паре, свои записи и несколько напоминаний."),
+            Feature(R.drawable.ic_photo, PINK, "Фото к записям",
+                "Сфотографируйте доску или задание и прикрепите к записи. Можно поделиться."),
+            Feature(R.drawable.ic_nav_grades, PURPLE, "«Что если» по формуле портала",
+                "Прогноз оценки по БРС и с экзаменом при отказе от БРС."),
+            Feature(R.drawable.ic_nav_pass, ORANGE, "Пропуск на панели",
+                "QR-код в одно касание с нижней панели."),
         )),
         Release("2.1", listOf(
-            "Первый выпуск: расписание, оценки и КРМ, пропуск, синхронизация с календарём телефона.",
-            "Обновления через GitHub Releases прямо из приложения.",
+            Feature(R.drawable.ic_launcher_foreground, 0xFF0054A6.toInt(), "Первый выпуск",
+                "Расписание, оценки и КРМ, пропуск, календарь телефона, обновления из приложения."),
         )),
     )
 
@@ -53,29 +87,53 @@ object WhatsNew {
 
     private fun show(context: Context, releases: List<Release>) {
         val ctx = context
-        val sheet = BottomSheetDialog(ctx)
-        val box = ctx.vertical(20)
-        box.addView(ctx.text("Что нового", 22f, bold = true))
-        for (r in releases) {
-            box.addView(ctx.section("Версия ${r.version}" + if (r.version == current) " · установлена" else ""))
-            for (item in r.items) {
-                box.addView(ctx.horizontal().apply {
-                    gravity = android.view.Gravity.TOP
-                    setPadding(0, ctx.dp(4), 0, ctx.dp(4))
-                    addView(ctx.text("•", 15f, bold = true, colorAttr = com.google.android.material.R.attr.colorPrimary).apply {
-                        setPadding(0, 0, ctx.dp(10), 0)
-                    })
-                    addView(ctx.text(item, 15f).weight())
-                })
-            }
+        val dialog = Dialog(ctx, R.style.Theme_SusuCalendar)
+        val root = ctx.vertical().apply {
+            setBackgroundColor(ctx.color(com.google.android.material.R.attr.colorSurface))
         }
-        box.addView(ctx.button("Понятно") { sheet.dismiss() }.apply {
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { topMargin = ctx.dp(16) }
+        val list = ctx.vertical().apply { setPadding(ctx.dp(24), ctx.dp(40), ctx.dp(24), ctx.dp(16)) }
+        val first = releases.first()
+        list.addView(ctx.text("Что нового", 30f, bold = true))
+        list.addView(ctx.secondary("SUSU Tool ${first.version}", 15f).apply { setPadding(0, ctx.dp(4), 0, ctx.dp(8)) })
+
+        releases.forEachIndexed { i, r ->
+            if (i > 0) list.addView(ctx.section("Версия ${r.version}").apply { setPadding(0, ctx.dp(24), 0, ctx.dp(4)) })
+            r.features.forEach { list.addView(row(ctx, it)) }
+        }
+        root.addView(ctx.scroll(list).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         })
-        sheet.setContentView(ctx.scroll(box))
-        sheet.show()
+        root.addView(ctx.button("Понятно") { dialog.dismiss() }.apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .apply { setMargins(ctx.dp(24), ctx.dp(8), ctx.dp(24), ctx.dp(28)) }
+        })
+
+        dialog.setContentView(root)
+        root.alpha = 0f
+        dialog.show()
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        root.animate().alpha(1f).setDuration(250).start()
+    }
+
+    /** Строка функции: цветная плитка с иконкой, заголовок и пояснение. */
+    private fun row(ctx: Context, f: Feature) = ctx.horizontal().apply {
+        gravity = Gravity.TOP
+        setPadding(0, ctx.dp(14), 0, ctx.dp(4))
+        val size = ctx.dp(48)
+        addView(ImageView(ctx).apply {
+            setImageResource(f.icon)
+            if (f.icon != R.drawable.ic_launcher_foreground) {
+                setColorFilter(android.graphics.Color.WHITE)
+                setPadding(ctx.dp(12), ctx.dp(12), ctx.dp(12), ctx.dp(12))
+            }
+            background = GradientDrawable().apply { cornerRadius = ctx.dp(14).toFloat(); setColor(f.tint) }
+            layoutParams = LinearLayout.LayoutParams(size, size).apply { marginEnd = ctx.dp(16) }
+        })
+        addView(ctx.vertical().apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            addView(ctx.text(f.title, 17f, bold = true))
+            addView(ctx.secondary(f.text, 14f).apply { setPadding(0, ctx.dp(2), 0, 0); setLineSpacing(0f, 1.1f) })
+        })
     }
 
     /** a > b по номерам версий («2.10» > «2.9»). */

@@ -112,6 +112,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("autoUpdateCheck", true)
         set(v) = sp.edit { putBoolean("autoUpdateCheck", v) }
 
+    /** Когда фоновая проверка изменений последний раз отработала (успешно или с ошибкой). */
+    var lastBackgroundCheck: Long
+        get() = sp.getLong("lastBackgroundCheck", 0)
+        set(v) = sp.edit { putLong("lastBackgroundCheck", v) }
+
     var lastUpdateCheck: Long
         get() = sp.getLong("lastUpdateCheck", 0)
         set(v) = sp.edit { putLong("lastUpdateCheck", v) }
@@ -125,10 +130,38 @@ class Prefs(context: Context) {
         get() = sp.getString("skippedVersion", "").orEmpty()
         set(v) = sp.edit { putString("skippedVersion", v) }
 
+    /** Профиль: данные с портала получены (один раз после входа). */
+    var profileFetched: Boolean
+        get() = sp.getBoolean("profileFetched", false)
+        set(v) = sp.edit { putBoolean("profileFetched", v) }
+
+    var profileGroup: String
+        get() = sp.getString("profileGroup", "").orEmpty()
+        set(v) = sp.edit { putString("profileGroup", v) }
+
+    /** Аватарка: portal — с портала, custom — своё фото, none — инициалы. */
+    var avatarMode: String
+        get() = sp.getString("avatarMode", Profile.AVATAR_PORTAL).orEmpty()
+        set(v) = sp.edit { putString("avatarMode", v) }
+
+    /** Скрытые пользователем пары (свайпом в ленте). */
+    var hiddenLessons: Set<String>
+        get() = sp.getStringSet("hiddenLessons", emptySet()).orEmpty().toSet()
+        set(v) = sp.edit { putStringSet("hiddenLessons", v) }
+
     /** Вид расписания: false — лента, true — неделя сеткой. */
     var weekView: Boolean
         get() = sp.getBoolean("weekView", false)
         set(v) = sp.edit { putBoolean("weekView", v) }
+
+    /** Когда последний раз успешно обновились данные и сколько пар в своём расписании. */
+    var lastSyncAt: Long
+        get() = sp.getLong("lastSyncAt", 0)
+        set(v) = sp.edit { putLong("lastSyncAt", v) }
+
+    var lastSyncLessons: Int
+        get() = sp.getInt("lastSyncLessons", 0)
+        set(v) = sp.edit { putInt("lastSyncLessons", v) }
 
     var lastStatus: String
         get() = sp.getString("lastStatus", "").orEmpty()
@@ -149,6 +182,8 @@ class Prefs(context: Context) {
             gradient = sp.getBoolean("d_gradient", true),
             compact = sp.getBoolean("d_compact", false),
             windows = sp.getBoolean("d_windows", true),
+            collapsePast = sp.getBoolean("d_collapsePast", true),
+            mini = sp.getBoolean("d_mini", false),
             theme = sp.getInt("d_theme", 0),
         )
         set(v) = sp.edit {
@@ -165,6 +200,8 @@ class Prefs(context: Context) {
             putBoolean("d_gradient", v.gradient)
             putBoolean("d_compact", v.compact)
             putBoolean("d_windows", v.windows)
+            putBoolean("d_collapsePast", v.collapsePast)
+            putBoolean("d_mini", v.mini)
             putInt("d_theme", v.theme)
         }
 
