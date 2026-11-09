@@ -322,6 +322,34 @@ class TimelineTest {
     }
 }
 
+class DonateTest {
+    private val day = 24 * 3600_000L
+    private val t0 = 1_000_000_000_000L
+
+    @Test fun offerOnlyAfterTwoWeeksAndFifteenLaunches() {
+        assertFalse(Donate.shouldOffer(t0 + 13 * day, t0, 30, 0, false))
+        assertFalse(Donate.shouldOffer(t0 + 20 * day, t0, 14, 0, false))
+        assertTrue(Donate.shouldOffer(t0 + 14 * day, t0, 15, 0, false))
+        assertFalse(Donate.shouldOffer(t0 + 30 * day, 0, 50, 0, false))
+    }
+
+    @Test fun laterAndDonated() {
+        val later = t0 + 20 * day + 14 * day
+        assertFalse(Donate.shouldOffer(t0 + 30 * day, t0, 40, later, false))
+        assertTrue(Donate.shouldOffer(later, t0, 40, later, false))
+        assertFalse(Donate.shouldOffer(t0 + 100 * day, t0, 100, 0, true))
+    }
+
+    @Test fun thanksWindow() {
+        assertFalse(Donate.shouldThank(10_000))
+        assertFalse(Donate.shouldThank(44_999))
+        assertTrue(Donate.shouldThank(45_000))
+        assertTrue(Donate.shouldThank(120_000))
+        assertTrue(Donate.shouldThank(300_000))
+        assertFalse(Donate.shouldThank(300_001))
+    }
+}
+
 class WhatsNewTest {
     @Test fun versionOrder() {
         assertTrue(WhatsNew.newer("2.2", "2.1"))

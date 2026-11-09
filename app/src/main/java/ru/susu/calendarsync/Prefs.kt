@@ -130,6 +130,27 @@ class Prefs(context: Context) {
         get() = sp.getString("skippedVersion", "").orEmpty()
         set(v) = sp.edit { putString("skippedVersion", v) }
 
+    /** Донат: первый запуск, число запусков, когда снова предложить, поддержал ли, когда ушёл в банк. */
+    var firstLaunchAt: Long
+        get() = sp.getLong("firstLaunchAt", 0)
+        set(v) = sp.edit { putLong("firstLaunchAt", v) }
+
+    var launchCount: Int
+        get() = sp.getInt("launchCount", 0)
+        set(v) = sp.edit { putInt("launchCount", v) }
+
+    var donateNextAt: Long
+        get() = sp.getLong("donateNextAt", 0)
+        set(v) = sp.edit { putLong("donateNextAt", v) }
+
+    var donated: Boolean
+        get() = sp.getBoolean("donated", false)
+        set(v) = sp.edit { putBoolean("donated", v) }
+
+    var donatePendingSince: Long
+        get() = sp.getLong("donatePendingSince", 0)
+        set(v) = sp.edit { putLong("donatePendingSince", v) }
+
     /** Профиль: данные с портала получены (один раз после входа). */
     var profileFetched: Boolean
         get() = sp.getBoolean("profileFetched", false)
@@ -143,6 +164,24 @@ class Prefs(context: Context) {
     var avatarMode: String
         get() = sp.getString("avatarMode", Profile.AVATAR_PORTAL).orEmpty()
         set(v) = sp.edit { putString("avatarMode", v) }
+
+    /** Шрифт: false — «Эффективный» (Noto Sans), true — «Обычный», как в телефоне. */
+    var systemFont: Boolean
+        get() = sp.getBoolean("systemFont", false)
+        set(v) = sp.edit { putBoolean("systemFont", v) }
+
+    /** Тема приложения с выбранным шрифтом — для активности и полноэкранных окон. */
+    val themeRes: Int get() = when {
+        systemFont && tightLines -> R.style.Theme_SusuCalendar_SystemFont_Tight
+        systemFont -> R.style.Theme_SusuCalendar_SystemFont
+        tightLines -> R.style.Theme_SusuCalendar_Tight
+        else -> R.style.Theme_SusuCalendar
+    }
+
+    /** Межстрочный интервал: false — обычный, true — компактный. */
+    var tightLines: Boolean
+        get() = sp.getBoolean("tightLines", false)
+        set(v) = sp.edit { putBoolean("tightLines", v) }
 
     /** Скрытые пользователем пары (свайпом в ленте). */
     var hiddenLessons: Set<String>

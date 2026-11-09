@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="Theme.SusuCalendar" parent="Theme.Material3.DayNight.NoActionBar">
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Base.SusuCalendar" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">#A4C8FF</item>
         <item name="colorOnPrimary">#00315F</item>
         <item name="colorPrimaryContainer">#004786</item>
@@ -23,5 +23,9 @@
         <item name="android:navigationBarColor">#1D2024</item>
         <!-- Без серой системной подсветки фокуса поверх экранов. -->
         <item name="android:defaultFocusHighlightEnabled">false</item>
+        <!-- Заставка Android 12+: иконка приложения на фоне темы. -->
+        <item name="android:windowSplashScreenBackground" tools:targetApi="31">#111318</item>
+        <item name="android:windowSplashScreenAnimatedIcon" tools:targetApi="31">@drawable/ic_launcher_foreground</item>
+        <item name="android:windowSplashScreenIconBackgroundColor" tools:targetApi="31">@color/launcher_bg</item>
     </style>
 </resources>

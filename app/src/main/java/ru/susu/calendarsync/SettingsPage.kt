@@ -30,7 +30,6 @@ class SettingsPage : Page() {
 
         fun of(section: String) = SettingsPage().apply { arguments = android.os.Bundle().apply { putString("section", section) } }
 
-        private const val DONATE_URL = "https://finance.ozon.ru/apps/sbp/ozonbankpay/01a1b512-8b85-766c-84dc-2ce3951ada42"
     }
 
     private var loading = false
@@ -260,11 +259,7 @@ class SettingsPage : Page() {
         root.addView(ctx.card(
             ctx.text("Пожертвовать  ›", 16f, bold = true),
             ctx.secondary("Если приложение помогает, можно поддержать разработку переводом через СБП."),
-        ) {
-            runCatching {
-                startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(DONATE_URL)))
-            }
-        })
+        ) { Donate.open(requireActivity()) })
 
 
         root.addView(ctx.section("Приложение"))

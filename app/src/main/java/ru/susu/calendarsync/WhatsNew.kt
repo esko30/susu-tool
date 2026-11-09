@@ -70,14 +70,15 @@ object WhatsNew {
     val current: String get() = BuildConfig.VERSION_NAME
 
     /** Показать сам после обновления — если в этой версии есть что рассказать и это ещё не видели. */
-    fun showIfUpdated(context: Context) {
+    fun showIfUpdated(context: Context): Boolean {
         val prefs = Prefs(context)
         // Пусто — обновились с 2.1, где этого раздела ещё не было (новая установка отмечается в приветствии).
         val seen = prefs.whatsNewSeen.ifEmpty { "2.1" }
         prefs.whatsNewSeen = current
-        if (seen == current) return
+        if (seen == current) return false
         val fresh = RELEASES.filter { newer(it.version, seen) }
         if (fresh.isNotEmpty()) show(context, fresh)
+        return fresh.isNotEmpty()
     }
 
     fun showAll(context: Context) = show(context, RELEASES)
@@ -87,7 +88,7 @@ object WhatsNew {
 
     private fun show(context: Context, releases: List<Release>) {
         val ctx = context
-        val dialog = Dialog(ctx, R.style.Theme_SusuCalendar)
+        val dialog = Dialog(ctx, Prefs(ctx).themeRes)
         val root = ctx.vertical().apply {
             setBackgroundColor(ctx.color(com.google.android.material.R.attr.colorSurface))
         }

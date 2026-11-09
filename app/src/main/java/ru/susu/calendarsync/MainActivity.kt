@@ -27,6 +27,8 @@ class MainActivity : AppCompatActivity() {
     var selectedUid: String? = null
     /** Расписания, уже обновлённые с момента запуска приложения. */
     val refreshedThisLaunch = HashSet<String>()
+    /** Приветствие и анимация входа — один раз за запуск. */
+    var greetPending = false
 
     private var afterPermissions: (() -> Unit)? = null
     private val permissionLauncher = registerForActivityResult(
@@ -68,7 +70,16 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(AppearancePage.nightMode(Prefs(this).display.theme))
+        setTheme(Prefs(this).themeRes)
         super.onCreate(savedInstanceState)
+        // Выход из заставки: иконка взлетает к шапке и тает, расписание проявляется.
+        if (android.os.Build.VERSION.SDK_INT >= 31) splashScreen.setOnExitAnimationListener { v ->
+            val icon: View? = v.iconView
+            icon?.animate()?.translationY(-v.height * 0.32f)?.scaleX(0.45f)?.scaleY(0.45f)?.alpha(0f)
+                ?.setDuration(380)?.setInterpolator(android.view.animation.AccelerateDecelerateInterpolator())?.start()
+            v.animate().alpha(0f).setStartDelay(140).setDuration(320).withEndAction { v.remove() }.start()
+        }
+        if (savedInstanceState == null) greetPending = true
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
         Notifier.ensureChannels(this)
@@ -92,7 +103,13 @@ class MainActivity : AppCompatActivity() {
             handleShortcut(intent)
             if (!Prefs(this).onboardingDone) b.root.post { Onboarding.show(this) }
             else {
-                b.root.post { WhatsNew.showIfUpdated(this) }
+                Donate.countLaunch(this)
+                b.root.post {
+                    // В день «Что нового» о донате не просим; иначе — на расписании, через пару секунд.
+                    if (!WhatsNew.showIfUpdated(this)) b.root.postDelayed({
+                        if (b.bottomNav.selectedItemId == tabs[Syncer.TAB_SCHEDULE]) Donate.maybeOffer(this)
+                    }, 2500)
+                }
                 Updater.autoCheck(this, lifecycleScope)
                 runCatching { NowWidget.update(this) }
                 runCatching { SyncWorker.ensure(applicationContext) }
@@ -102,6 +119,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Вернулись из банка после «Поддержать» — возможно, пора сказать спасибо.
+        Donate.onResume(this)
         // Вернулись в приложение спустя долгое время — ещё раз проверим обновления.
         Updater.autoCheck(this, lifecycleScope, Updater.RESUME_CHECK_MS)
     }

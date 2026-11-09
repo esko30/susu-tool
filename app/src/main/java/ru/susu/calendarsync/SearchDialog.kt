@@ -29,7 +29,7 @@ object SearchDialog {
 
     fun show(activity: MainActivity, scope: LifecycleCoroutineScope, onPick: (ScheduleInfo) -> Unit) {
         val ctx = activity
-        val dialog = Dialog(ctx, R.style.Theme_SusuCalendar)
+        val dialog = Dialog(ctx, Prefs(ctx).themeRes)
         val handler = Handler(Looper.getMainLooper())
         var pending: Runnable? = null
         var requestNo = 0

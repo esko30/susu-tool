@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Шрифт приложения: «Эффективный» (Noto Sans, по умолчанию) или «Обычный» (как в телефоне). -->
+<resources>
+    <style name="Theme.SusuCalendar" parent="Base.SusuCalendar">
+        <item name="android:fontFamily">@font/noto_sans</item>
+        <item name="fontFamily">@font/noto_sans</item>
+        <item name="textAppearanceDisplayLarge">@style/TextAppearance.Susu.DisplayLarge</item>
+        <item name="textAppearanceDisplayMedium">@style/TextAppearance.Susu.DisplayMedium</item>
+        <item name="textAppearanceDisplaySmall">@style/TextAppearance.Susu.DisplaySmall</item>
+        <item name="textAppearanceHeadlineLarge">@style/TextAppearance.Susu.HeadlineLarge</item>
+        <item name="textAppearanceHeadlineMedium">@style/TextAppearance.Susu.HeadlineMedium</item>
+        <item name="textAppearanceHeadlineSmall">@style/TextAppearance.Susu.HeadlineSmall</item>
+        <item name="textAppearanceTitleLarge">@style/TextAppearance.Susu.TitleLarge</item>
+        <item name="textAppearanceTitleMedium">@style/TextAppearance.Susu.TitleMedium</item>
+        <item name="textAppearanceTitleSmall">@style/TextAppearance.Susu.TitleSmall</item>
+        <item name="textAppearanceBodyLarge">@style/TextAppearance.Susu.BodyLarge</item>
+        <item name="textAppearanceBodyMedium">@style/TextAppearance.Susu.BodyMedium</item>
+        <item name="textAppearanceBodySmall">@style/TextAppearance.Susu.BodySmall</item>
+        <item name="textAppearanceLabelLarge">@style/TextAppearance.Susu.LabelLarge</item>
+        <item name="textAppearanceLabelMedium">@style/TextAppearance.Susu.LabelMedium</item>
+        <item name="textAppearanceLabelSmall">@style/TextAppearance.Susu.LabelSmall</item>
+    </style>
+
+    <style name="Theme.SusuCalendar.SystemFont">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="fontFamily">sans-serif</item>
+        <item name="textAppearanceDisplayLarge">@style/TextAppearance.Material3.DisplayLarge</item>
+        <item name="textAppearanceDisplayMedium">@style/TextAppearance.Material3.DisplayMedium</item>
+        <item name="textAppearanceDisplaySmall">@style/TextAppearance.Material3.DisplaySmall</item>
+        <item name="textAppearanceHeadlineLarge">@style/TextAppearance.Material3.HeadlineLarge</item>
+        <item name="textAppearanceHeadlineMedium">@style/TextAppearance.Material3.HeadlineMedium</item>
+        <item name="textAppearanceHeadlineSmall">@style/TextAppearance.Material3.HeadlineSmall</item>
+        <item name="textAppearanceTitleLarge">@style/TextAppearance.Material3.TitleLarge</item>
+        <item name="textAppearanceTitleMedium">@style/TextAppearance.Material3.TitleMedium</item>
+        <item name="textAppearanceTitleSmall">@style/TextAppearance.Material3.TitleSmall</item>
+        <item name="textAppearanceBodyLarge">@style/TextAppearance.Material3.BodyLarge</item>
+        <item name="textAppearanceBodyMedium">@style/TextAppearance.Material3.BodyMedium</item>
+        <item name="textAppearanceBodySmall">@style/TextAppearance.Material3.BodySmall</item>
+        <item name="textAppearanceLabelLarge">@style/TextAppearance.Material3.LabelLarge</item>
+        <item name="textAppearanceLabelMedium">@style/TextAppearance.Material3.LabelMedium</item>
+        <item name="textAppearanceLabelSmall">@style/TextAppearance.Material3.LabelSmall</item>
+    </style>
+
+    <style name="TextAppearance.Susu.DisplayLarge" parent="TextAppearance.Material3.DisplayLarge">
+        <item name="android:fontFamily">@font/noto_sans</item>
+        <item name="fontFamily">@font/noto_sans</item>
+        <item name="android:textFontWeight">400</item>
+    </style>
+    <style name="TextAppearance.Susu.DisplayMedium" parent="TextAppearance.Material3.DisplayMedium">
+        <item name="android:fontFamily">@font/noto_sans</item>
+        <item name="fontFamily">@font/noto_sans</item>
+        <item name="android:textFontWeight">400</item>
+    </style>
+    <style name="TextAppearance.Susu.DisplaySmall" parent="TextAppearance.Material3.DisplaySmall">
+        <item name="android:fontFamily">@font/noto_sans</item>
+        <item name="fontFamily">@font/noto_sans</item>
+        <item name="android:textFontWeight">400</item>
+    </style>
+    <style name="TextAppearance.Susu.HeadlineLarge" parent="TextAppearance.Material3.HeadlineLarge">
+        <item name="android:fontFamily">@font/noto_sans</item>
+        <item name="fontFamily">@font/noto_sans</item>
+        <item name="android:textFontWeight">400</item>
+    </style>
+    <style name="TextAppearance.Susu.HeadlineMedium" parent="TextAppearance.Material3.HeadlineMedium">
+        <item name="android:fontFamily">@font/noto_sans</item>
+        <item name="fontFamily">@font/noto_sans</item>
+        <item name="android:textFontWeight">400</item>
+    </style>
+    <style name="TextAppearance.Susu.HeadlineSmall" parent="TextAppearance.Material3.HeadlineSmall">
+        <item name="android:fontFamily">@font/noto_sans</item>
+        <item name="fontFamily">@font/noto_sans</item>
+        <item name="android:textFontWeight">400</item>
+    </style>
+    <style name="TextAppearance.Susu.TitleLarge" parent="TextAppearance.Material3.TitleLarge">
+        <item name="android:fontFamily">@font/noto_sans</item>
+        <item name="fontFamily">@font/noto_sans</item>
+        <item name="android:textFontWeight">400</item>
+    </style>
+    <style name="TextAppearance.Susu.TitleMedium" parent="TextAppearance.Material3.TitleMedium">
+        <item name="android:fontFamily">@font/noto_sans</item>
+        <item name="fontFamily">@font/noto_sans</item>
+        <item name="android:textFontWeight">500</item>
+    </style>
+    <style name="TextAppearance.Susu.TitleSmall" parent="TextAppearance.Material3.TitleSmall">
+        <item name="android:fontFamily">@font/noto_sans</item>
+        <item name="fontFamily">@font/noto_sans</item>
+        <item name="android:textFontWeight">500</item>
+    </style>
+    <style name="TextAppearance.Susu.BodyLarge" parent="TextAppearance.Material3.BodyLarge">
+        <item name="android:fontFamily">@font/noto_sans</item>
+        <item name="fontFamily">@font/noto_sans</item>
+        <item name="android:textFontWeight">400</item>
+    </style>
+    <style name="TextAppearance.Susu.BodyMedium" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:fontFamily">@font/noto_sans</item>
+        <item name="fontFamily">@font/noto_sans</item>
+        <item name="android:textFontWeight">400</item>
+    </style>
+    <style name="TextAppearance.Susu.BodySmall" parent="TextAppearance.Material3.BodySmall">
+        <item name="android:fontFamily">@font/noto_sans</item>
+        <item name="fontFamily">@font/noto_sans</item>
+        <item name="android:textFontWeight">400</item>
+    </style>
+    <style name="TextAppearance.Susu.LabelLarge" parent="TextAppearance.Material3.LabelLarge">
+        <item name="android:fontFamily">@font/noto_sans</item>
+        <item name="fontFamily">@font/noto_sans</item>
+        <item name="android:textFontWeight">500</item>
+    </style>
+    <style name="TextAppearance.Susu.LabelMedium" parent="TextAppearance.Material3.LabelMedium">
+        <item name="android:fontFamily">@font/noto_sans</item>
+        <item name="fontFamily">@font/noto_sans</item>
+        <item name="android:textFontWeight">500</item>
+    </style>
+    <style name="TextAppearance.Susu.LabelSmall" parent="TextAppearance.Material3.LabelSmall">
+        <item name="android:fontFamily">@font/noto_sans</item>
+        <item name="fontFamily">@font/noto_sans</item>
+        <item name="android:textFontWeight">500</item>
+    </style>
+
+    <!-- Компактный межстрочный интервал: без лишних полей сверху и снизу строки. -->
+    <style name="Theme.SusuCalendar.Tight">
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:lineSpacingMultiplier">0.92</item>
+    </style>
+    <style name="Theme.SusuCalendar.SystemFont.Tight">
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:lineSpacingMultiplier">0.92</item>
+    </style>
+</resources>

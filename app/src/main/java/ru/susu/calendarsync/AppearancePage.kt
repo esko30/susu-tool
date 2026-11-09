@@ -31,6 +31,18 @@ class AppearancePage : Page() {
             AppCompatDelegate.setDefaultNightMode(nightMode(i))
         })
 
+        root.addView(ctx.section("Шрифт"))
+        root.addView(ctx.spinner(listOf("Эффективный · Noto Sans", "Обычный · как в телефоне"), if (prefs.systemFont) 1 else 0) { i ->
+            prefs.systemFont = i == 1
+            // Шрифт задаётся темой: пересоздаём экран, позиция в настройках сохраняется.
+            requireActivity().recreate()
+        })
+        root.addView(ctx.text("Межстрочный интервал", 14f).apply { setPadding(0, ctx.dp(10), 0, 0) })
+        root.addView(ctx.spinner(listOf("Обычный", "Компактный"), if (prefs.tightLines) 1 else 0) { i ->
+            prefs.tightLines = i == 1
+            requireActivity().recreate()
+        })
+
         root.addView(ctx.section("Карточки пар"))
         root.addView(ctx.text("Размер карточек", 14f))
         root.addView(ctx.spinner(listOf("Нормальный", "Мини: название в 2 строки, преподаватель кратко"), if (d.mini) 1 else 0) { i ->

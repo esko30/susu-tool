@@ -42,7 +42,7 @@ object Onboarding {
                     "Логин и пароль хранятся зашифрованными на телефоне."),
         )
 
-        val dialog = Dialog(ctx, R.style.Theme_SusuCalendar)
+        val dialog = Dialog(ctx, Prefs(ctx).themeRes)
         val root = ctx.vertical().apply {
             setBackgroundColor(ctx.color(com.google.android.material.R.attr.colorSurface))
             setPadding(0, ctx.dp(24), 0, ctx.dp(24))
