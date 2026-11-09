@@ -306,7 +306,7 @@ class SchedulePage : Page() {
 
     /**
      * «Привет, имя!» под заголовком сегодняшнего дня и цитата: при каждом открытии следующая по кругу.
-     * Через 2 минуты плашка уезжает вверх и схлопывается; по нажатию закрывается сразу.
+     * Через 3 секунды плашка уезжает вверх и схлопывается; по нажатию закрывается сразу.
      */
     private fun greeting(): View? {
         val ctx = requireContext()
@@ -342,7 +342,7 @@ class SchedulePage : Page() {
                 .apply { setMargins(0, ctx.dp(2), 0, ctx.dp(6)) }
             addView(card)
         }
-        wrap.postDelayed({ dismiss() }, 120_000)
+        wrap.postDelayed({ dismiss() }, 3000)
         return wrap
     }
 
