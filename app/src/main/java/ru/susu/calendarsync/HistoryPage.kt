@@ -44,15 +44,15 @@ class HistoryPage : Page() {
         }
         if (sets.isEmpty()) {
             root.addView(ctx.secondary(
-                "Изменений пока не было. Здесь появятся переносы и отмены пар, новые КРМ и оценки, " +
-                    "а о каждом изменении придёт уведомление."
+                "Пока ничего не менялось. " +
+                    "Здесь появятся переносы, отмены, новые КРМ и оценки."
             ).apply { setPadding(0, ctx.dp(12), 0, 0) })
         }
 
         val fmt = SimpleDateFormat("d MMMM yyyy, HH:mm", Locale("ru"))
         for (set in sets) {
             root.addView(ctx.section(set.source))
-            root.addView(ctx.secondary("Обнаружено ${fmt.format(Date(set.timestamp))}"))
+            root.addView(ctx.secondary("Замечено ${fmt.format(Date(set.timestamp))}"))
             for (change in set.changes) root.addView(ctx.card(changeText(change)))
         }
         return ctx.scroll(root)

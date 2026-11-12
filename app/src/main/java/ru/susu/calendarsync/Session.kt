@@ -13,7 +13,7 @@ object Session {
     fun login(context: Context, force: Boolean = false): LoginResult {
         auth?.takeIf { !force }?.let { return it }
         val prefs = Prefs(context)
-        check(prefs.hasCredentials) { "Войдите в аккаунт на вкладке «Настройки»" }
+        check(prefs.hasCredentials) { "Войдите в «Настройках»" }
         val result = SusuApi.login(prefs.login, prefs.password)
         auth = result
         prefs.displayName = result.displayName

@@ -32,7 +32,7 @@ class AppearancePage : Page() {
         })
 
         root.addView(ctx.section("Шрифт"))
-        root.addView(ctx.spinner(listOf("Эффективный · Noto Sans", "Обычный · как в телефоне"), if (prefs.systemFont) 1 else 0) { i ->
+        root.addView(ctx.spinner(listOf("Noto Sans", "Как в телефоне"), if (prefs.systemFont) 1 else 0) { i ->
             prefs.systemFont = i == 1
             // Шрифт задаётся темой: пересоздаём экран, позиция в настройках сохраняется.
             requireActivity().recreate()
@@ -45,33 +45,42 @@ class AppearancePage : Page() {
 
         root.addView(ctx.section("Карточки пар"))
         root.addView(ctx.text("Размер карточек", 14f))
-        root.addView(ctx.spinner(listOf("Нормальный", "Мини: название в 2 строки, преподаватель кратко"), if (d.mini) 1 else 0) { i ->
-            prefs.display = prefs.display.copy(mini = i == 1)
+        val size = when { d.mini -> 2; d.compact -> 1; else -> 0 }
+        root.addView(ctx.spinner(listOf("Нормальный", "Компактный", "Мини"), size) { i ->
+            prefs.display = prefs.display.copy(compact = i >= 1, mini = i == 2)
         })
         opt("Аудитория крупно", d.bigRoom) { o, v -> o.copy(bigRoom = v) }
-        opt("Лейбл типа занятия (ЛЕК, СЕМ)", d.typeTag) { o, v -> o.copy(typeTag = v) }
-        opt("Цветной градиент по типу занятия", d.gradient) { o, v -> o.copy(gradient = v) }
+        opt("Тип пары значком, например ЛЕК", d.typeTag) { o, v -> o.copy(typeTag = v) }
+        opt("Цвет карточки по типу пары", d.gradient) { o, v -> o.copy(gradient = v) }
         opt("Преподаватель", d.teacher) { o, v -> o.copy(teacher = v) }
         opt("Группы", d.groups) { o, v -> o.copy(groups = v) }
         opt("Номер пары", d.pairNumber) { o, v -> o.copy(pairNumber = v) }
-        opt("Компактные карточки", d.compact) { o, v -> o.copy(compact = v) }
-        opt("Короткие типы в календаре («Практики»)", d.shortTypes) { o, v -> o.copy(shortTypes = v) }
-
-        root.addView(ctx.section("Текущая пара"))
-        opt("Полоса прогресса", d.progress) { o, v -> o.copy(progress = v) }
-        opt("Анимация полосы (свечение и волна)", d.glow) { o, v -> o.copy(glow = v) }
-        opt("«Начнётся через …» у следующих пар", d.countdown) { o, v -> o.copy(countdown = v) }
 
         root.addView(ctx.section("Лента"))
-        opt("Скрывать прошедшие дни", d.hidePast) { o, v -> o.copy(hidePast = v) }
-        opt("Сворачивать прошедшие пары сегодня", d.collapsePast) { o, v -> o.copy(collapsePast = v) }
+        opt("Полоса прогресса у текущей пары", d.progress) { o, v -> o.copy(progress = v, glow = v) }
+        opt("Сколько осталось до следующих пар", d.countdown) { o, v -> o.copy(countdown = v) }
         opt("Свободные окна между парами", d.windows) { o, v -> o.copy(windows = v) }
-
-        root.addView(ctx.section("Пропуск"))
-        root.addView(ctx.button("Показать пропуск", outlined = true) { main.openPass() }.apply {
+        opt("Сворачивать прошедшие пары", d.collapsePast) { o, v -> o.copy(collapsePast = v) }
+        opt("Скрывать прошедшие дни", d.hidePast) { o, v -> o.copy(hidePast = v) }
+        root.addView(ctx.button("Вернуть стандартные", outlined = true) {
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(ctx)
+                .setMessage("Тема, шрифт, карточки и все переключатели станут как после установки.")
+                .setPositiveButton("Вернуть") { _, _ ->
+                    prefs.display = DisplayOptions(
+                        pairNumber = false, shortTypes = prefs.display.shortTypes, bigRoom = true, teacher = true,
+                        groups = true, progress = true, countdown = true, hidePast = false,
+                    )
+                    prefs.systemFont = false
+                    prefs.tightLines = false
+                    AppCompatDelegate.setDefaultNightMode(nightMode(0))
+                    requireActivity().recreate()
+                }
+                .setNegativeButton("Отмена", null)
+                .show()
+        }.apply {
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { topMargin = ctx.dp(8) }
+            ).apply { topMargin = ctx.dp(20) }
         })
         return ctx.scroll(root)
     }

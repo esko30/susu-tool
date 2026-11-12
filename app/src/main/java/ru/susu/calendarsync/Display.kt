@@ -33,6 +33,7 @@ object Bells {
 fun lessonTypeColor(type: String): Int {
     val t = type.lowercase()
     return when {
+        t.startsWith("своя") -> android.graphics.Color.rgb(242, 183, 5)
         t.startsWith("лекц") -> android.graphics.Color.rgb(79, 142, 247)
         t.startsWith("практ") || t.startsWith("семин") -> android.graphics.Color.rgb(67, 175, 108)
         t.startsWith("лаб") -> android.graphics.Color.rgb(245, 146, 54)
@@ -84,6 +85,7 @@ data class DisplayOptions(
             val t = type.lowercase().trim()
             return when {
                 t.isEmpty() -> ""
+                t.startsWith("своя") -> "МОЯ"
                 t.startsWith("лекц") -> "ЛЕК"
                 t.startsWith("практ") || t.startsWith("семин") -> "СЕМ"
                 t.startsWith("лаб") -> "ЛАБ"

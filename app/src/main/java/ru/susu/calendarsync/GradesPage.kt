@@ -21,14 +21,17 @@ class GradesPage : Page() {
         val ctx = requireContext()
         val prefs = Prefs(ctx)
         val root = ctx.vertical(16)
-        root.addView(ctx.title("Успеваемость"))
+        val header = ctx.horizontal().apply { gravity = android.view.Gravity.CENTER_VERTICAL }
+        header.addView(ctx.title("Успеваемость").weight())
+        if (prefs.hasCredentials) header.addView(DutySheet.button(ctx) { DutySheet.show(ctx) { render() } })
+        root.addView(header)
 
         if (!prefs.hasCredentials) {
-            root.addView(ctx.secondary("Войдите в аккаунт на вкладке «Настройки»."))
+            root.addView(ctx.secondary("Войдите в «Настройках», и здесь появятся оценки."))
             return ctx.scroll(root)
         }
         if (Store(ctx).own()?.kind == ScheduleKind.TEACHER) {
-            root.addView(ctx.secondary("Раздел оценок доступен только для студентов."))
+            root.addView(ctx.secondary("Оценки есть только у студентов."))
             return ctx.scroll(root)
         }
 
@@ -48,12 +51,26 @@ class GradesPage : Page() {
             })
         }
         root.addView(ctx.button(if (loading) "Загрузка…" else "Обновить") { refresh() }.apply { isEnabled = !loading })
-        root.addView(ctx.switch("Следить за оценками и новыми КРМ", prefs.monitorGrades) { prefs.monitorGrades = it })
 
         snapshot?.updated?.takeIf { it > 0 }?.let {
             root.addView(ctx.secondary("Обновлено " + SimpleDateFormat("d MMMM, HH:mm", Locale("ru")).format(Date(it))))
         }
         if (status.isNotBlank()) root.addView(ctx.secondary(status).apply { setPadding(0, ctx.dp(6), 0, 0) })
+
+        // Красный диплом: короткий итог, подробности на отдельном экране.
+        val dip = Diploma.load(ctx)?.let { Diploma.analyze(it) }
+        root.addView(ctx.card(
+            ctx.text("Красный диплом  ›", 16f, bold = true),
+            ctx.secondary(when {
+                dip == null -> "Посчитать, получится ли"
+                dip.threes > 0 -> "Сейчас не получится, есть тройка"
+                dip.foursLeft < 0 -> "Четвёрок больше 25%"
+                dip.foursLeft == 0 -> "Возможен, дальше только пятёрки"
+                else -> "Возможен, можно ещё " + Remind.plural(dip.foursLeft, "четвёрку", "четвёрки", "четвёрок")
+            }),
+        ) { main.openDiploma() }.apply {
+            (layoutParams as? LinearLayout.LayoutParams)?.topMargin = ctx.dp(10)
+        })
 
         if (snapshot == null) {
             if (!autoLoaded && !loading) {
@@ -63,7 +80,7 @@ class GradesPage : Page() {
             return ctx.scroll(root)
         }
 
-        if (snapshot.subjects.isEmpty()) root.addView(ctx.secondary("Дисциплин в этом семестре нет."))
+        if (snapshot.subjects.isEmpty()) root.addView(ctx.secondary("В этом семестре предметов нет"))
 
         // Разделы по форме контроля; внутри — по убыванию рейтинга, без баллов — в конце.
         snapshot.subjects.groupBy { category(it) }.toSortedMap(compareBy { it.ordinal }).forEach { (cat, list) ->
@@ -91,8 +108,9 @@ class GradesPage : Page() {
         }
     }
 
-    private fun ring(r: Double?) = RatingRing(requireContext(), requireContext().dp(60)).apply {
+    private fun ring(r: Double?, credit: Boolean = false) = RatingRing(requireContext(), requireContext().dp(60)).apply {
         layoutParams = LinearLayout.LayoutParams(context.dp(60), context.dp(60)).apply { setMargins(context.dp(12), 0, 0, 0) }
+        this.credit = credit
         set(r)
     }
 
@@ -102,16 +120,16 @@ class GradesPage : Page() {
         val info = ctx.vertical().apply { layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
         info.addView(ctx.text(s.name, 16f, bold = true).apply { setPadding(0, ctx.dp(2), 0, ctx.dp(4)) })
         if (s.mark.isNotBlank()) {
-            info.addView(ctx.chip("Оценка: ${Grades.markText(s.mark)}", ctx.ratingColor(s.mark.toDoubleOrNull()?.let { it * 20 })))
+            info.addView(ctx.chip("Оценка ${Grades.markText(s.mark)}", ctx.ratingColor(s.mark.toDoubleOrNull()?.let { it * 20 })))
         }
         if (s.instructors.isNotBlank()) info.addView(ctx.secondary(s.instructors).apply { setPadding(0, ctx.dp(4), 0, 0) })
         val scored = s.events.count { (it.point ?: 0.0) > 0 }
-        if (s.events.isNotEmpty()) info.addView(ctx.secondary("КРМ с баллами: $scored из ${s.events.size}", 13f).apply {
+        if (s.events.isNotEmpty()) info.addView(ctx.secondary("Баллы стоят за $scored КРМ из ${s.events.size}", 13f).apply {
             setPadding(0, ctx.dp(4), 0, 0)
         })
         val head = ctx.horizontal()
         head.addView(info)
-        head.addView(ring(s.bestRating))
+        head.addView(ring(if (s.events.isNotEmpty()) Forecast.projected(s, emptyMap()) else s.bestRating, Forecast.isCredit(s)))
         return ctx.card(head) { main.openSubject(termNo, s.key) }
     }
 
@@ -123,7 +141,7 @@ class GradesPage : Page() {
         val t = term.takeIf { it > 0 }
         background({ Syncer.syncGrades(ctx, t) }) { r ->
             loading = false
-            r.onSuccess { status = "Дисциплин: ${it.subjects.size}" }.onFailure { status = errorText(it) }
+            r.onSuccess { status = "Предметов ${it.subjects.size}" }.onFailure { status = errorText(it) }
             render()
         }
     }

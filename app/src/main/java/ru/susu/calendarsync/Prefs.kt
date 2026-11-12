@@ -69,7 +69,7 @@ class Prefs(context: Context) {
         set(v) = sp.edit { putLong("customTo", v) }
 
     var monitorGrades: Boolean
-        get() = sp.getBoolean("monitorGrades", true)
+        get() = true // единый мониторинг: оценки проверяются вместе с расписанием
         set(v) = sp.edit { putBoolean("monitorGrades", v) }
 
     /** Текущий семестр по учебному плану; 0 — ещё не загружали. */
@@ -182,6 +182,21 @@ class Prefs(context: Context) {
     var tightLines: Boolean
         get() = sp.getBoolean("tightLines", false)
         set(v) = sp.edit { putBoolean("tightLines", v) }
+
+    /** Сколько часов дежурит «Дежурный» (1–12). */
+    var dutyHours: Int
+        get() = sp.getInt("dutyHours", 4)
+        set(v) = sp.edit { putInt("dutyHours", v) }
+
+    /** «Дежурный» включён до этого момента (мс); 0 — выключен. */
+    var ultraUntil: Long
+        get() = sp.getLong("ultraUntil", 0)
+        set(v) = sp.edit { putLong("ultraUntil", v) }
+
+    /** Черновик незаконченной записи планера (JSON). */
+    var plannerDraft: String
+        get() = sp.getString("plannerDraft", "").orEmpty()
+        set(v) = sp.edit { putString("plannerDraft", v) }
 
     /** Номер цитаты, показанной в приветствии в прошлый раз. */
     var quoteIndex: Int

@@ -208,3 +208,17 @@ fun Context.readable(c: Int, minContrast: Double = 3.0): Int {
     }
     return out
 }
+
+/**
+ * Отступы под строку состояния и панель навигации (кнопки или жесты), чтобы полноэкранные окна
+ * не залезали под них. Базовые отступы [base] сохраняются и складываются с системными.
+ */
+fun View.padForSystemBars() {
+    val l = paddingLeft; val t = paddingTop; val r = paddingRight; val b = paddingBottom
+    androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(this) { v, insets ->
+        val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        v.setPadding(l + bars.left, t + bars.top, r + bars.right, b + bars.bottom)
+        insets
+    }
+    androidx.core.view.ViewCompat.requestApplyInsets(this)
+}

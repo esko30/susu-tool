@@ -77,8 +77,8 @@ object SearchDialog {
                 if (no != requestNo || !dialog.isShowing) return@launch // пришёл ответ на устаревший запрос
                 r.onSuccess {
                     lastResults = it
-                    showResults(if (it.isEmpty()) "Ничего не найдено" else "Найдено: ${it.size}")
-                }.onFailure { showResults("Не удалось выполнить поиск: ${it.message}") }
+                    showResults(if (it.isEmpty()) "Ничего не найдено" else "Нашлось ${it.size}")
+                }.onFailure { showResults("Поиск не сработал, проверьте интернет") }
             }
         }
 
@@ -90,7 +90,7 @@ object SearchDialog {
             if (q.length < 2) {
                 requestNo++
                 lastResults = emptyList()
-                showResults(if (q.isEmpty()) "Начните вводить название группы, фамилию или номер аудитории" else "Введите ещё хотя бы один символ")
+                showResults(if (q.isEmpty()) "Введите группу, фамилию или аудиторию" else "Ещё хотя бы одну букву")
                 return
             }
             pending = Runnable { search(q) }.also { handler.postDelayed(it, delay) }
@@ -104,7 +104,7 @@ object SearchDialog {
         input.setOnEditorActionListener { _, action, _ ->
             if (action == EditorInfo.IME_ACTION_SEARCH) { schedule(input.text.toString(), 0); true } else false
         }
-        showResults(if (lastResults.isEmpty()) "Начните вводить название группы, фамилию или номер аудитории" else "Найдено: ${lastResults.size}")
+        showResults(if (lastResults.isEmpty()) "Введите группу, фамилию или аудиторию" else "Нашлось ${lastResults.size}")
         // Был запрос, но результатов в памяти нет — повторяем поиск.
         if (lastQuery.length >= 2 && lastResults.isEmpty()) schedule(lastQuery, 0)
 

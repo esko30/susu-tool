@@ -100,7 +100,7 @@ class CalendarSync(private val context: Context) {
             put(Calendars.SYNC_EVENTS, 1)
         }
         val uri = resolver.insert(Calendars.CONTENT_URI.asSyncAdapter(), values)
-            ?: error("Не удалось создать календарь")
+            ?: error("Не получилось создать календарь")
         return uri.lastPathSegment!!.toLong()
     }
 

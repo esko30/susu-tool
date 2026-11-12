@@ -111,7 +111,7 @@ class PassPage : Page() {
 
         if (!Prefs(ctx).hasCredentials) {
             holder.removeAllViews()
-            holder.addView(ctx.text("Войдите в аккаунт на вкладке «Настройки», чтобы получить пропуск.", 16f).apply {
+            holder.addView(ctx.text("Войдите в «Настройках», и здесь появится пропуск.", 16f).apply {
                 setTextColor(Color.DKGRAY); gravity = Gravity.CENTER
             }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
             return root
@@ -127,7 +127,7 @@ class PassPage : Page() {
                 }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                 number.text = code
             }.onFailure {
-                holder.addView(ctx.text("Не удалось получить пропуск.\nПроверьте интернет и вход в аккаунт.", 16f).apply {
+                holder.addView(ctx.text("Не получилось загрузить пропуск.\nПроверьте интернет.", 16f).apply {
                     setTextColor(Color.DKGRAY); gravity = Gravity.CENTER
                 }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
             }

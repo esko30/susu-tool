@@ -20,8 +20,8 @@ data class SavedSchedule(
 
     /** Имя календаря на телефоне. У своего расписания — прежнее, чтобы не потерять уже созданный календарь. */
     val calendarKey get() = if (own) "susu_schedule" else "suss_$uid"
-    val calendarTitle get() = if (own) "SUSU Tool — моё расписание" else "SUSU Tool — $name"
-    val label get() = if (own) "Моё расписание" else "${kind.label}: $name"
+    val calendarTitle get() = if (own) "SUSU Tool · моё расписание" else "SUSU Tool · $name"
+    val label get() = if (own) "Моё расписание" else "$name"
 
     fun toJson(): JSONObject = JSONObject()
         .put("kind", kind.name).put("id", id).put("name", name).put("desc", description)

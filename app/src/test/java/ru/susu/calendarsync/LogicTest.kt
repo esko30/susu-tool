@@ -68,8 +68,8 @@ class ForecastTest {
 
     @Test fun neededOnRemainingAndOnExam() {
         assertEquals(listOf("опрос", "кр3", "кр4", "кр5", "кр6", "лр1", "лр2"), Forecast.remaining(big, emptyMap()).map { it.name })
-        assertEquals((60 - 19) / 0.8, Forecast.needed(big, emptyMap(), 60.0)!!, 1e-9)
-        assertEquals((60 - 0.6 * 19) / 0.4, Forecast.neededExam(big, emptyMap(), 60.0)!!, 1e-9)
+        assertEquals((59.01 - 19) / 0.8, Forecast.needed(big, emptyMap(), 60.0)!!, 1e-9)
+        assertEquals((59.01 - 0.6 * 19) / 0.4, Forecast.neededExam(big, emptyMap(), 60.0)!!, 1e-9)
         val none = subject(50.0, "Зачёт", cur("a", 5.0, 10.0, "1"))
         assertNull(Forecast.neededExam(none, emptyMap(), 60.0))
         assertNull(Forecast.needed(none, emptyMap(), 60.0))
@@ -86,11 +86,14 @@ class ForecastTest {
     }
 
     @Test fun marksByThresholds() {
-        assertEquals("5 · отлично", Forecast.markFor(85.0, false))
-        assertEquals("4 · хорошо", Forecast.markFor(84.9, false))
-        assertEquals("3 · удовлетворительно", Forecast.markFor(60.0, false))
-        assertEquals("2 · неудовлетворительно", Forecast.markFor(59.9, false))
-        assertEquals("зачтено", Forecast.markFor(60.0, true))
+        // Округление в пользу студента: больше «порог − 1» уже засчитывается.
+        assertEquals("5 · отлично", Forecast.markFor(84.1, false))
+        assertEquals("4 · хорошо", Forecast.markFor(84.0, false))
+        assertEquals("4 · хорошо", Forecast.markFor(74.01, false))
+        assertEquals("3 · удовлетворительно", Forecast.markFor(74.0, false))
+        assertEquals("3 · удовлетворительно", Forecast.markFor(59.01, false))
+        assertEquals("2 · неудовлетворительно", Forecast.markFor(59.0, false))
+        assertEquals("зачтено", Forecast.markFor(59.01, true))
         assertEquals("не зачтено", Forecast.markFor(59.0, true))
     }
 
@@ -319,6 +322,101 @@ class TimelineTest {
         assertEquals(8, Timeline.pairNumber("20:25"))
         assertEquals(0, Timeline.pairNumber("??"))
         assertNotNull(Bells.find("08:00"))
+    }
+}
+
+class GradeNewsTest {
+    private fun subj(name: String, mark: String = "", control: String = "Экзамен", vararg ev: PointEvent) =
+        SubjectGrades("d-$name", name, 7, "1", "", control, mark, null, "", "", null, null, ev.toList())
+    private fun ev(name: String, p: Double?, max: Double? = 10.0) = PointEvent("Текущий контроль", name, p, max, null, "")
+    private fun snap(vararg s: SubjectGrades) = GradesSnapshot(7, 11, 0, s.toList())
+
+    @Test fun shortNames() {
+        assertEquals("Теории личности", GradeNews.shortName("Теории личности в клинической психологии"))
+        assertEquals("Психология личности", GradeNews.shortName("Психология личности: норма и патология"))
+        assertEquals("Иностранный язык", GradeNews.shortName("Иностранный язык в сфере профессиональной коммуникации"))
+        assertEquals("Психосоматика", GradeNews.shortName("Психосоматика"))
+    }
+
+    @Test fun texts() {
+        val old = snap(subj("Теории личности", "", "Экзамен", ev("Тест 3", null), ev("Тест 2", 8.0)), subj("Генетика", "", "Зачёт"))
+        val new = snap(subj("Теории личности", "5", "Экзамен", ev("Тест 3", 7.0), ev("Тест 2", 5.0), ev("Контрольная работа 2", null)),
+            subj("Генетика", "Зачтено", "Зачёт"))
+        val t = GradeNews.of(old, new).map { it.text }
+        assertTrue(t.contains("7 из 10 за «Тест 3»"))
+        assertTrue(t.contains("Балл за «Тест 2» снизили с 8 до 5"))
+        assertTrue(t.contains("Новое КРМ «Контрольная работа 2»"))
+        assertTrue(t.contains("Экзамен сдан на 5"))
+        assertTrue(t.contains("Зачёт сдан"))
+        assertTrue(t.none { "—" in it || ":" in it })
+    }
+}
+
+class DiplomaTest {
+    private fun r(name: String, kind: Diploma.Kind, term: Int, mark: Int?) = Diploma.Rec(name, kind, term, mark)
+    private val E = Diploma.Kind.EXAM
+    private val D = Diploma.Kind.DIFF
+    private val C = Diploma.Kind.CREDIT
+
+    @Test fun parsesMarks() {
+        assertEquals(5, Diploma.parseMark("Отлично"))
+        assertEquals(4, Diploma.parseMark("хорошо (4)"))
+        assertEquals(3, Diploma.parseMark("удовлетворительно"))
+        assertEquals(2, Diploma.parseMark("неудовлетворительно"))
+        assertEquals(5, Diploma.parseMark("5"))
+        assertNull(Diploma.parseMark("зачтено"))
+        assertNull(Diploma.parseMark(""))
+        assertNull(Diploma.parseMark(null))
+    }
+
+    @Test fun kinds() {
+        assertEquals(Diploma.Kind.CREDIT, Diploma.kindOf("Зачёт"))
+        assertEquals(Diploma.Kind.DIFF, Diploma.kindOf("Дифф. зачёт"))
+        assertEquals(Diploma.Kind.EXAM, Diploma.kindOf("Экзамен"))
+        assertEquals(Diploma.Kind.COURSE, Diploma.kindOf("Курсовая работа"))
+        assertEquals(Diploma.Kind.PRACTICE, Diploma.kindOf("Практика"))
+        assertEquals(Diploma.Kind.PRACTICE, Diploma.kindOf("Дифф. зачёт", "Учебная практика (ознакомительная)"))
+        assertEquals(Diploma.Kind.PRACTICE, Diploma.kindOf("", "Производственная практика (преддипломная)"))
+        assertEquals(Diploma.Kind.EXAM, Diploma.kindOf("Экзамен", "Общий психологический практикум"))
+        assertEquals(Diploma.Kind.GIA, Diploma.kindOf("", "Государственный экзамен"))
+        assertEquals(Diploma.Kind.GIA, Diploma.kindOf("", "Выпускная квалификационная работа специалиста"))
+    }
+
+    @Test fun markedRecordBeatsEmptyOneInSameTerm() {
+        val P = Diploma.Kind.PRACTICE
+        val res = Diploma.analyze(listOf(r("Учебная практика", P, 2, 5), r("Учебная практика", P, 2, null),
+            r("ГИА", Diploma.Kind.GIA, 11, null)))
+        assertEquals(1, res.fives); assertEquals(0, res.pending)
+        assertEquals(1, res.gia.size); assertEquals(1, res.lines.size)
+    }
+
+    @Test fun lastExamMarkWinsAndCreditsIgnored() {
+        val res = Diploma.analyze(listOf(
+            r("Психодиагностика", D, 5, 4), r("Психодиагностика", E, 6, 5),
+            r("Физкультура", C, 3, null), r("Философия", E, 2, 5),
+        ))
+        assertEquals(2, res.lines.size)
+        assertEquals(2, res.fives)
+        assertEquals(0, res.fours)
+    }
+
+    @Test fun quarterOfFours() {
+        // 8 строк: допускается 2 четвёрки.
+        val recs = (1..6).map { r("П$it", E, 1, 5) } + r("Ч1", E, 2, 4) + r("Ч2", E, 2, 4)
+        val ok = Diploma.analyze(recs)
+        assertTrue(ok.possible); assertEquals(0, ok.foursLeft)
+        val bad = Diploma.analyze(recs + r("Ч3", E, 3, 4))
+        assertFalse(bad.possible)
+        val three = Diploma.analyze((1..10).map { r("П$it", E, 1, 5) } + r("Т", E, 2, 3))
+        assertFalse(three.possible)
+    }
+
+    @Test fun pendingCountsTowardTotal() {
+        // 7 оценок + 1 впереди = 8 строк, лимит 2 четвёрки, уже 1 — можно ещё одну.
+        val recs = (1..6).map { r("П$it", E, 1, 5) } + r("Ч", E, 2, 4) + r("Новая", E, 7, null)
+        val res = Diploma.analyze(recs)
+        assertEquals(1, res.pending)
+        assertEquals(1, res.foursLeft)
     }
 }
 

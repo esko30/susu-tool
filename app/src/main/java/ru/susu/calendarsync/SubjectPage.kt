@@ -40,42 +40,44 @@ class SubjectPage : Page() {
         val key = requireArguments().getString("key").orEmpty()
         val s = GradesStore(ctx).load(term)?.subjects?.firstOrNull { it.key == key }
         if (s == null) {
-            root.addView(ctx.secondary("Дисциплина не найдена, обновите оценки."))
+            root.addView(ctx.secondary("Предмет не нашёлся, обновите оценки"))
             return ctx.scroll(root)
         }
         val credit = Forecast.isCredit(s)
 
         root.addView(ctx.secondary(
-            if (whatIf) "Что если · прогноз оценки" else s.controlLabel.replaceFirstChar { it.uppercase() } + " · $term семестр",
+            if (whatIf) "Что если" else s.controlLabel.replaceFirstChar { it.uppercase() } + " · $term семестр",
         ))
         root.addView(ctx.text(s.name, 22f, bold = true).apply { setPadding(0, ctx.dp(4), 0, ctx.dp(4)) })
         if (s.instructors.isNotBlank()) root.addView(ctx.secondary(s.instructors))
 
         // Итог: рейтинг сейчас, прогноз и оценка.
         ring = RatingRing(ctx, ctx.dp(96)).apply {
+            this.credit = credit
             layoutParams = LinearLayout.LayoutParams(ctx.dp(96), ctx.dp(96)).apply { setMargins(0, 0, ctx.dp(16), 0) }
         }
         summaryNow = ctx.secondary("", 14f)
-        summaryForecast = ctx.text("", 18f, bold = true)
-        summaryMark = ctx.text("", 15f, bold = true)
+        summaryForecast = ctx.text("", 20f, bold = true)
+        summaryMark = ctx.secondary("", 13f)
         val summary = ctx.horizontal()
         summary.addView(ring)
+        summary.gravity = android.view.Gravity.CENTER_VERTICAL
         summary.addView(ctx.vertical().apply {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             addView(summaryNow); addView(summaryForecast); addView(summaryMark)
-            if (s.mark.isNotBlank()) addView(ctx.secondary("На портале: ${Grades.markText(s.mark)}", 13f))
+            if (s.mark.isNotBlank()) addView(ctx.secondary("На портале ${Grades.markText(s.mark)}", 13f))
         })
         root.addView(ctx.card(summary))
 
         // Сколько нужно на оставшихся КРМ.
         neededBox = ctx.vertical()
-        root.addView(ctx.card(ctx.text("Что нужно для оценки", 15f, bold = true), neededBox))
+        root.addView(ctx.card(ctx.text("Сколько нужно", 15f, bold = true), neededBox))
 
         val sliders = ArrayList<Pair<PointEvent, Slider>>()
         if (whatIf) {
             root.addView(ctx.secondary(
-                "Двигайте ползунки, чтобы задать баллы за КРМ, и прогноз сразу пересчитается. " +
-                    "Расчёт примерный и повторяет формулу портала. Значения сбрасываются при выходе.", 13f,
+                "Двигайте ползунки, и прогноз сразу пересчитается. " +
+                    "Расчёт примерный, при выходе всё сбросится.", 13f,
             ).apply { setPadding(0, ctx.dp(12), 0, 0) })
             root.addView(ctx.textButton("Сбросить к баллам портала") {
                 ov.clear()
@@ -95,7 +97,7 @@ class SubjectPage : Page() {
             root.addView(ctx.section(cat))
             for (e in events) root.addView(eventCard(s, e, ov, credit, sliders))
         }
-        if (s.events.isEmpty()) root.addView(ctx.secondary("Портал не прислал КРМ по этой дисциплине."))
+        if (s.events.isEmpty()) root.addView(ctx.secondary("Портал не прислал КРМ по этому предмету"))
 
         update(s, ov, credit)
         return ctx.scroll(root)
@@ -120,7 +122,9 @@ class SubjectPage : Page() {
         head.addView(value)
         val views = mutableListOf<View>(head)
         val meta = buildList {
-            add("на портале ${if (e.point == null) "—" else Grades.fmt(e.point)} из ${Grades.fmt(max)}")
+            // Балл уже справа в заголовке; «на портале» нужно только в «Что если», где справа значение ползунка.
+            if (e.point == null) add("баллов пока нет")
+            else if (whatIf) add("на портале ${Grades.fmt(e.point)} из ${Grades.fmt(max)}")
             e.weight.takeIf { it.isNotBlank() }?.let { add("вес $it") }
         }.joinToString(" · ")
         views += ctx.secondary(meta, 12f)
@@ -154,46 +158,49 @@ class SubjectPage : Page() {
     /** Пересчёт итога и «что нужно» без перестройки экрана — ползунки не сбрасываются. */
     private fun update(s: SubjectGrades, ov: Map<String, Double>, credit: Boolean) {
         val ctx = requireContext()
-        fun r1(v: Double) = Grades.fmt(Math.round(v * 10) / 10.0)
+        fun r1(v: Double) = Grades.fmt(Math.round(v * 100) / 100.0)
         val brs = Forecast.current(s, ov)
         val exam = Forecast.examPercent(s, ov)
         val p = Forecast.projected(s, ov)
         ring.set(p, animate = true)
-        summaryNow.text = "На портале: ${r1(s.bestRating ?: 0.0)}%"
-        summaryForecast.text = (if (ov.isEmpty()) "Рейтинг: " else "Прогноз: ") + "${r1(p)}%"
-        summaryForecast.setTextColor(ctx.color(
-            if (ov.isEmpty()) com.google.android.material.R.attr.colorOnSurface else com.google.android.material.R.attr.colorPrimary,
-        ))
-        summaryMark.text = "Оценка: ${Forecast.markFor(p, credit)}" +
-            if (exam != null) "\nПо БРС ${r1(brs)}%, с экзаменом ${r1(p)}%" else ""
-        summaryMark.setTextColor(ctx.ratingColor(p))
+        val mark = Forecast.markFor(p, credit).substringBefore(" ·")
+        val noPoints = ov.isEmpty() && s.events.none { it.point != null }
+        summaryNow.text = "Сейчас ${r1(s.bestRating ?: 0.0)}%"
+        summaryNow.visibility = if (ov.isEmpty()) View.GONE else View.VISIBLE
+        summaryForecast.text = when {
+            noPoints -> "Баллов пока нет"
+            credit -> mark.replaceFirstChar { it.uppercase() }
+            ov.isEmpty() -> "Сейчас выходит $mark"
+            else -> "Выйдет $mark"
+        }
+        summaryForecast.setTextColor(if (noPoints) ctx.color(com.google.android.material.R.attr.colorOnSurface) else ctx.ratingColor(p))
+        summaryMark.text = if (exam != null) "Без экзамена ${r1(brs)}%, с экзаменом ${r1(p)}%" else ""
+        summaryMark.visibility = if (exam != null) View.VISIBLE else View.GONE
 
         neededBox.removeAllViews()
         val rest = Forecast.remaining(s, ov)
-        val targets = if (credit) listOf(60.0 to "Зачёт") else listOf(85.0 to "Отлично", 75.0 to "Хорошо", 60.0 to "Удовлетворительно")
+        val targets = if (credit) listOf(60.0 to "Зачёт") else listOf(85.0 to "5", 75.0 to "4", 60.0 to "3")
         for ((t, name) in targets) {
             val need = Forecast.needed(s, ov, t)
             val needExam = Forecast.neededExam(s, ov, t)
             val byBrs = when {
-                brs >= t -> "по БРС уже набрано"
+                Forecast.reaches(brs, t) -> "уже набрано"
                 need == null -> null
                 need > 100 -> null
-                else -> "в среднем ${need.roundToInt().coerceAtLeast(1)}% на оставшихся КРМ (${rest.size})"
+                else -> "по ${need.roundToInt().coerceAtLeast(1)}% за ${rest.size} КРМ"
             }
             val byExam = when {
-                brs >= t || needExam == null -> null
+                Forecast.reaches(brs, t) || needExam == null -> null
                 needExam > 100 -> null
-                else -> "${needExam.roundToInt().coerceAtLeast(1)}% на экзамене при отказе от БРС"
+                else -> "${needExam.roundToInt().coerceAtLeast(1)}% на экзамене"
             }
-            val text = listOfNotNull(byBrs, byExam).joinToString("\nили ").ifEmpty {
-                "не набрать: не хватает ${r1(t - brs)}%"
-            }
-            val row = ctx.horizontal().apply { setPadding(0, ctx.dp(8), 0, 0) }
-            row.addView(ctx.text("$name · ${t.roundToInt()}%", 14f, bold = true).apply {
+            val text = listOfNotNull(byBrs, byExam).joinToString(" или ").ifEmpty { "уже не набрать" }
+            val row = ctx.horizontal().apply { setPadding(0, ctx.dp(6), 0, 0); gravity = android.view.Gravity.CENTER_VERTICAL }
+            row.addView(ctx.text(name, if (credit) 15f else 18f, bold = true).apply {
                 setTextColor(ctx.ratingColor(t))
-                layoutParams = LinearLayout.LayoutParams(ctx.dp(178), ViewGroup.LayoutParams.WRAP_CONTENT)
+                layoutParams = LinearLayout.LayoutParams(ctx.dp(if (credit) 64 else 28), ViewGroup.LayoutParams.WRAP_CONTENT)
             })
-            row.addView(ctx.secondary(text, 14f).weight())
+            row.addView(ctx.text(text, 14f).weight())
             neededBox.addView(row)
         }
     }

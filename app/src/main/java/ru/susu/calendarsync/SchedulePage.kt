@@ -119,7 +119,7 @@ class SchedulePage : Page() {
         if (list.isEmpty()) {
             header.addView(ctx.title("Расписание"))
             if (status.isNotBlank()) header.addView(ctx.secondary(status))
-            header.addView(ctx.secondary("Войдите в аккаунт на вкладке «Настройки» или найдите группу, преподавателя или аудиторию."))
+            header.addView(ctx.secondary("Войдите в «Настройках» или найдите группу, преподавателя или аудиторию."))
             header.addView(ctx.button("Найти расписание", outlined = true) {
                 SearchDialog.show(main, viewLifecycleOwner.lifecycleScope) { showQuick(it.kind, it.name, it) }
             })
@@ -139,7 +139,7 @@ class SchedulePage : Page() {
         page.removeView(header)
 
         val row = ctx.horizontal()
-        val selector = ctx.spinner(list.map { if (it === main.tempSchedule) "🔍 ${it.kind.label}: ${it.name}" else it.label } +
+        val selector = ctx.spinner(list.map { if (it === main.tempSchedule) "🔍 ${it.name}" else it.label } +
             "＋ Найти и добавить…",
             list.indexOf(current)) { i ->
             if (i == list.size) {
@@ -157,6 +157,7 @@ class SchedulePage : Page() {
         selectorName = selector.text
         selector.tag = "tour_selector"
         row.addView(selector.weight())
+        if (Duty.active(ctx)) row.addView(DutySheet.button(ctx) { DutySheet.show(ctx) { render() } })
         row.addView(historyButton())
         lateinit var more: View
         more = iconButton(R.drawable.ic_more, "Ещё") { showMenu(more, current, isTemp, store) }.apply { tag = "tour_more" }
@@ -209,7 +210,8 @@ class SchedulePage : Page() {
         }
 
         display = Prefs(ctx).display
-        val lessons = if (isTemp) main.tempLessons else store.lessons(current.uid)
+        // Свои неофициальные пары добавляются к расписанию, к которому их внесли.
+        val lessons = (if (isTemp) main.tempLessons else store.lessons(current.uid)) + MyLessons.lessons(ctx, current.uid)
         feedLessons = lessons
         plannerByLesson = Planner.byLesson(ctx)
         val today = Clock.today()
@@ -226,7 +228,7 @@ class SchedulePage : Page() {
             .sortedWith(compareBy({ it.date }, { it.beginTime })).groupBy { it.date }
         if (byDay.isEmpty()) {
             if (loading) addSkeleton(feed)
-            else feed.addView(ctx.secondary(if (updateFailed) "Не удалось загрузить расписание. Проверьте интернет." else "Занятий нет.")
+            else feed.addView(ctx.secondary(if (updateFailed) "Не получилось загрузить расписание. Проверьте интернет." else "Пар нет")
                 .apply { setPadding(0, ctx.dp(24), 0, 0) })
         }
         var anchor: View? = null
@@ -399,7 +401,7 @@ class SchedulePage : Page() {
             }
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ctx.dp(30))
                 .apply { setMargins(0, ctx.dp(5), 0, ctx.dp(5)) }
-            contentDescription = "Скрытая пара ${l.beginTime} ${l.subject}. Нажмите, чтобы показать"
+            contentDescription = "Скрытая пара ${l.beginTime} ${l.subject}, нажмите, чтобы показать"
             addView(android.widget.ImageView(ctx).apply {
                 setImageResource(R.drawable.ic_eye_off)
                 setColorFilter(ctx.color(com.google.android.material.R.attr.colorOnSurfaceVariant))
@@ -449,7 +451,7 @@ class SchedulePage : Page() {
         box.addView(nav)
 
         if (inWeek.isEmpty()) {
-            box.addView(ctx.secondary("На этой неделе занятий нет.").apply { setPadding(ctx.dp(4), ctx.dp(16), 0, 0) })
+            box.addView(ctx.secondary("На этой неделе пар нет").apply { setPadding(ctx.dp(4), ctx.dp(16), 0, 0) })
             return box
         }
 
@@ -497,7 +499,7 @@ class SchedulePage : Page() {
             }
             box.addView(row)
         }
-        box.addView(ctx.secondary("Нажмите на ячейку, чтобы открыть пару.", 12f).apply { setPadding(ctx.dp(4), ctx.dp(8), 0, 0) })
+        box.addView(ctx.secondary("Нажмите на пару, чтобы открыть её", 12f).apply { setPadding(ctx.dp(4), ctx.dp(8), 0, 0) })
         return box
     }
 
@@ -680,16 +682,18 @@ class SchedulePage : Page() {
     private fun showMenu(anchor: View, current: SavedSchedule, isTemp: Boolean, store: Store) {
         val ctx = requireContext()
         val popup = android.widget.PopupMenu(ctx, anchor)
+        if (!isTemp) popup.menu.add(0, 3, 0, "Настроить это расписание…")
         popup.menu.add(0, 1, 0, "Обновить")
         popup.menu.add(0, 5, 0, "Расписание звонков")
-        popup.menu.add(0, 6, 0, if (Prefs(ctx).weekView) "Вид: лента" else "Вид: неделя")
+        popup.menu.add(0, 6, 0, if (Prefs(ctx).weekView) "Показать лентой" else "Показать по неделям")
+        popup.menu.add(0, 8, 0, "＋ Своя пара…")
         if (isTemp) popup.menu.add(0, 2, 1, "★ Сохранить расписание")
-        else popup.menu.add(0, 3, 1, "Уведомления и календарь…")
         if (!isTemp && !current.own) popup.menu.add(0, 4, 2, "Удалить из сохранённых")
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> refresh(current, isTemp)
                 5 -> showBells()
+                8 -> PlannerSheet.showMyLesson(main, current.uid, null) { render() }
                 6 -> {
                     val p = Prefs(ctx)
                     p.weekView = !p.weekView
@@ -723,7 +727,7 @@ class SchedulePage : Page() {
     private fun addOptions(header: LinearLayout, current: SavedSchedule, store: Store) {
         val ctx = requireContext()
         fun update(f: (SavedSchedule) -> SavedSchedule) = store.find(current.uid)?.let { store.upsert(f(it)) }
-        header.addView(ctx.switch("Следить за изменениями и уведомлять", current.monitor) { v ->
+        header.addView(ctx.switch("Следить за изменениями", current.monitor) { v ->
             update { it.copy(monitor = v) }
         })
         header.addView(ctx.switch("Добавлять в календарь телефона", current.toCalendar) { v ->
@@ -739,7 +743,7 @@ class SchedulePage : Page() {
         val ctx = requireContext()
         MaterialAlertDialogBuilder(ctx)
             .setMessage("Удалить «${current.label}» из сохранённых?" +
-                if (current.toCalendar) " Его календарь на телефоне тоже будет удалён." else "")
+                if (current.toCalendar) " Его календарь на телефоне тоже удалится." else "")
             .setPositiveButton("Удалить") { _, _ ->
                 store.remove(current.uid)
                 main.selectedUid = null
@@ -1009,7 +1013,11 @@ class SchedulePage : Page() {
             }
         }
         // Нажатие на карточку — добавить запись в планер к этой (или следующей) паре.
-        return ctx.surfaceCard(body) { PlannerSheet.show(ctx, l, null, feedLessons) { render() } }.apply {
+        return ctx.surfaceCard(body) {
+            val mine = if (MyLessons.isMine(l)) main.selectedUid?.let { MyLessons.find(ctx, it, l) } else null
+            if (mine != null) PlannerSheet.showMyLesson(main, mine.uid, mine) { render() }
+            else PlannerSheet.show(ctx, l, null, feedLessons) { render() }
+        }.apply {
             clipToOutline = true
             if (done) alpha = 0.55f
             // Без анимации полоски идущую пару выделяем рамкой.
@@ -1078,7 +1086,7 @@ class SchedulePage : Page() {
                 val upcoming = lessons.distinctBy { it.key }
                     .filter { it.date >= today.toString() && it.date <= today.plusDays(13).toString() }
                     .sortedWith(compareBy({ it.date }, { it.beginTime })).groupBy { it.date }
-                if (upcoming.isEmpty()) body.addView(ctx.secondary("В ближайшие две недели занятий нет.").apply { setPadding(0, ctx.dp(12), 0, 0) })
+                if (upcoming.isEmpty()) body.addView(ctx.secondary("В ближайшие две недели пар нет").apply { setPadding(0, ctx.dp(12), 0, 0) })
                 for ((date, items) in upcoming) {
                     val d = LocalDate.parse(date)
                     body.addView(ctx.text(

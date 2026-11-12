@@ -5,6 +5,7 @@ import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import android.widget.Toast
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
@@ -16,6 +17,34 @@ import com.google.android.material.textfield.TextInputLayout
  * [lesson] — пара, с которой открыли; [existing] — редактируемая запись.
  */
 object PlannerSheet {
+    /**
+     * Черновик новой записи: закрыли панель, не сохранив, — набранное вернётся при следующем открытии.
+     * Один черновик на всё приложение: у своей записи ключ «custom», у записи к паре — ключ пары.
+     */
+    private object Draft {
+        fun key(lesson: Lesson?) = lesson?.let { "lesson:${it.date}|${it.beginTime}|${it.subject}" } ?: "custom"
+
+        fun load(ctx: Context, key: String): org.json.JSONObject? = runCatching {
+            org.json.JSONObject(Prefs(ctx).plannerDraft).takeIf { it.optString("key") == key }
+        }.getOrNull()
+
+        fun save(ctx: Context, key: String, title: String, note: String, label: String, date: String = "", time: String = "") {
+            if (title.isBlank() && note.isBlank() && label.isBlank()) return clear(ctx)
+            Prefs(ctx).plannerDraft = org.json.JSONObject().put("key", key).put("title", title).put("note", note)
+                .put("label", label).put("date", date).put("time", time).toString()
+        }
+
+        fun clear(ctx: Context) { Prefs(ctx).plannerDraft = "" }
+    }
+
+    /** Подпись «Черновик восстановлен · Очистить». */
+    private fun draftHint(ctx: Context, onClear: () -> Unit) = ctx.horizontal().apply {
+        gravity = android.view.Gravity.CENTER_VERTICAL
+        setPadding(ctx.dp(2), ctx.dp(6), 0, 0)
+        addView(ctx.secondary("Черновик восстановлен", 13f).weight())
+        addView(ctx.textButton("Очистить") { onClear() })
+    }
+
     fun show(ctx: Context, lesson: Lesson?, existing: PlannerItem?, lessons: List<Lesson>, onChanged: () -> Unit) {
         val subject = existing?.subject ?: lesson?.subject ?: return
         val from = lesson ?: lessons.firstOrNull { it.key.startsWith(existing!!.lessonKey) }
@@ -29,7 +58,8 @@ object PlannerSheet {
         val occ = if (from != null) Planner.occurrences(lessons, subject, from) else emptyList()
         val names = listOf("Эта пара", "Следующая", "Через одну")
         val targets = occ.mapIndexed { i, l ->
-            Target(l.date, l.beginTime, l.location, "${names.getOrNull(i)?.let { "$it · " } ?: ""}${ChangeDiff.day(l.date)}, ${l.beginTime}")
+            Target(l.date, l.beginTime, l.location, "${names.getOrNull(i)?.let { "$it · " } ?: ""}${ChangeDiff.day(l.date)}, ${l.beginTime}" +
+                Prefs(ctx).display.typeWord(l.eventType).takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty())
         }.toMutableList()
         if (existing != null && targets.none { it.date == existing.date && it.begin == existing.begin }) {
             targets.add(0, Target(existing.date, existing.begin, existing.location, "${ChangeDiff.day(existing.date)}, ${existing.begin}"))
@@ -51,13 +81,28 @@ object PlannerSheet {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
             minLines = 2
         }
-        box.addView(field(ctx, "Заметка: что повторить, что сдать", note))
+        box.addView(field(ctx, "Заметка, например что повторить", note))
+        val draftKey = Draft.key(lesson)
+        if (existing == null) Draft.load(ctx, draftKey)?.let { d ->
+            note.setText(d.optString("note"))
+            labels.indexOf(d.optString("label")).takeIf { it >= 0 }?.let { (labelGroup.getChildAt(it) as Chip).isChecked = true }
+            lateinit var hint: View
+            hint = draftHint(ctx) {
+                Draft.clear(ctx); note.setText("")
+                labelGroup.clearCheck(); (hint.parent as? ViewGroup)?.removeView(hint)
+            }
+            box.addView(hint)
+        }
 
         box.addView(caption(ctx, "Фото"))
         val photos = PlannerPhotos.Editor(ctx, existing?.photos.orEmpty())
         box.addView(photos.view)
         var saved = false
-        sheet.setOnDismissListener { if (!saved) photos.discard() }
+        sheet.setOnDismissListener {
+            if (!saved) photos.discard()
+            if (!saved && existing == null) Draft.save(ctx, draftKey, "", note.text?.toString().orEmpty(),
+                labels.getOrNull(checkedIndex(labelGroup)).orEmpty())
+        }
 
         box.addView(caption(ctx, "Напоминания"))
         val reminders = remindersEditor(ctx, existing?.reminders ?: listOf(Remind.EVENING), lesson = true)
@@ -89,6 +134,7 @@ object PlannerSheet {
                 photos = photos.photos,
             ))
             saved = true
+            Draft.clear(ctx)
             photos.commit()
             sheet.dismiss()
             onChanged()
@@ -168,12 +214,30 @@ object PlannerSheet {
             minLines = 2
         }
         box.addView(field(ctx, "Заметка", note))
+        if (existing == null) Draft.load(ctx, "custom")?.let { d ->
+            title.setText(d.optString("title"))
+            note.setText(d.optString("note"))
+            labels.indexOf(d.optString("label")).takeIf { it >= 0 }?.let { (labelGroup.getChildAt(it) as Chip).isChecked = true }
+            d.optString("date").takeIf { it.isNotBlank() }?.let { runCatching { date = java.time.LocalDate.parse(it) } }
+            time = d.optString("time")
+            refreshWhen()
+            lateinit var hint: View
+            hint = draftHint(ctx) {
+                Draft.clear(ctx); title.setText(""); note.setText(""); labelGroup.clearCheck()
+                (hint.parent as? ViewGroup)?.removeView(hint)
+            }
+            box.addView(hint)
+        }
 
         box.addView(caption(ctx, "Фото"))
         val photos = PlannerPhotos.Editor(ctx, existing?.photos.orEmpty())
         box.addView(photos.view)
         var saved = false
-        sheet.setOnDismissListener { if (!saved) photos.discard() }
+        sheet.setOnDismissListener {
+            if (!saved) photos.discard()
+            if (!saved && existing == null) Draft.save(ctx, "custom", title.text?.toString().orEmpty(),
+                note.text?.toString().orEmpty(), labels.getOrNull(checkedIndex(labelGroup)).orEmpty(), date.toString(), time)
+        }
 
         box.addView(caption(ctx, "Напоминания"))
         val reminders = remindersEditor(ctx, existing?.reminders ?: listOf(Remind.EVENING), lesson = false)
@@ -197,6 +261,7 @@ object PlannerSheet {
                 photos = photos.photos,
             ))
             saved = true
+            Draft.clear(ctx)
             photos.commit()
             sheet.dismiss()
             onChanged()
@@ -221,7 +286,7 @@ object PlannerSheet {
         val hint = ctx.secondary("", 12f).apply { setPadding(ctx.dp(2), ctx.dp(8), 0, 0) }
         fun refreshHint() {
             val n = (0 until group.childCount).count { (group.getChildAt(it) as Chip).let { c -> c.isCheckable && c.isChecked } }
-            hint.text = if (n == 0) "Без напоминаний" else "Выбрано: $n. Можно отметить несколько."
+            hint.text = if (n == 0) "Без напоминаний" else "Выбрано $n, можно отметить несколько"
         }
         fun addOption(r: Remind, checked: Boolean) {
             if (r in options) {
@@ -271,7 +336,7 @@ object PlannerSheet {
         }
         timeBtn.visibility = View.GONE
         box.addView(timeBtn)
-        box.addView(ctx.secondary("Для дней: 0 значит в тот же день, 1 значит накануне.", 12f))
+        box.addView(ctx.secondary("Для дней 0 значит в тот же день, 1 значит накануне", 12f))
         unitGroup.setOnCheckedStateChangeListener { _, _ ->
             timeBtn.visibility = if (checkedIndex(unitGroup) == 2) View.VISIBLE else View.GONE
             if (checkedIndex(unitGroup) == 2 && num.text?.toString() == "30") num.setText("1")
@@ -289,6 +354,95 @@ object PlannerSheet {
             }
             .setNegativeButton("Отмена", null)
             .show()
+    }
+
+    /** Своя неофициальная пара: название, дата, время начала и конца, место, заметка. */
+    fun showMyLesson(activity: androidx.fragment.app.FragmentActivity, uid: String, existing: MyLessons.Item?, onChanged: () -> Unit) {
+        val ctx: Context = activity
+        val sheet = BottomSheetDialog(ctx)
+        val box = ctx.vertical(20)
+        val header = ctx.horizontal().apply { gravity = android.view.Gravity.CENTER_VERTICAL }
+        header.addView(ctx.text("Своя пара", 20f, bold = true).weight())
+        box.addView(header)
+        box.addView(ctx.secondary("Её видите только вы, на портал она не попадает", 13f)
+            .apply { setPadding(ctx.dp(2), ctx.dp(4), 0, 0) })
+
+        val subject = TextInputEditText(ctx).apply {
+            setText(existing?.subject.orEmpty())
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        }
+        val subjectLayout = field(ctx, "Название", subject)
+        box.addView(subjectLayout)
+
+        // По умолчанию: завтра, вторая пара по звонкам.
+        var date = existing?.date?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() } ?: Clock.today().plusDays(1)
+        val second = Bells.pairs.getOrNull(1)
+        var begin = existing?.begin ?: second?.start1?.toString() ?: "09:45"
+        var end = existing?.end ?: second?.end2?.toString() ?: "11:20"
+        val dateValue = ctx.text("", 16f, bold = true)
+        val beginValue = ctx.text("", 16f, bold = true)
+        val endValue = ctx.text("", 16f, bold = true)
+        fun refresh() {
+            dateValue.text = ChangeDiff.day(date.toString()).replaceFirstChar { it.uppercase() }
+            beginValue.text = begin
+            endValue.text = end
+        }
+        fun pickTime(title: String, current: String, set: (String) -> Unit) {
+            val (h, m) = current.split(":").map { it.toIntOrNull() ?: 0 }.let { (it.getOrNull(0) ?: 9) to (it.getOrNull(1) ?: 0) }
+            val picker = com.google.android.material.timepicker.MaterialTimePicker.Builder()
+                .setTimeFormat(com.google.android.material.timepicker.TimeFormat.CLOCK_24H)
+                .setHour(h).setMinute(m).setTitleText(title).build()
+            picker.addOnPositiveButtonClickListener { set("%02d:%02d".format(picker.hour, picker.minute)); refresh() }
+            picker.show(activity.supportFragmentManager, "my_lesson_time")
+        }
+        box.addView(tile(ctx, "Дата", dateValue) {
+            val picker = com.google.android.material.datepicker.MaterialDatePicker.Builder.datePicker()
+                .setTitleText("Дата")
+                .setSelection(date.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli())
+                .build()
+            picker.addOnPositiveButtonClickListener { ms ->
+                date = java.time.Instant.ofEpochMilli(ms).atZone(java.time.ZoneOffset.UTC).toLocalDate()
+                refresh()
+            }
+            picker.show(activity.supportFragmentManager, "my_lesson_date")
+        }.apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .apply { topMargin = ctx.dp(12) }
+        })
+        val times = ctx.horizontal().apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .apply { topMargin = ctx.dp(10) }
+        }
+        times.addView(tile(ctx, "Начало", beginValue) { pickTime("Начало", begin) { begin = it } }.weight())
+        times.addView(View(ctx).apply { layoutParams = LinearLayout.LayoutParams(ctx.dp(10), 1) })
+        times.addView(tile(ctx, "Конец", endValue) { pickTime("Конец", end) { end = it } }.weight())
+        box.addView(times)
+        refresh()
+
+        val place = TextInputEditText(ctx).apply { setText(existing?.location.orEmpty()); inputType = InputType.TYPE_CLASS_TEXT }
+        box.addView(field(ctx, "Аудитория", place))
+        val note = TextInputEditText(ctx).apply {
+            setText(existing?.note.orEmpty())
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        }
+        box.addView(field(ctx, "Заметка, например что взять", note))
+
+        header.addView(ctx.button("Сохранить") {
+            val name = subject.text?.toString()?.trim().orEmpty()
+            if (name.isEmpty()) { subjectLayout.error = "Напишите название"; return@button }
+            if (end <= begin) { Toast.makeText(ctx, "Конец должен быть позже начала", Toast.LENGTH_SHORT).show(); return@button }
+            MyLessons.save(ctx, MyLessons.Item(
+                id = existing?.id ?: java.util.UUID.randomUUID().toString(), uid = uid,
+                date = date.toString(), begin = begin, end = end, subject = name,
+                location = place.text?.toString()?.trim().orEmpty(), note = note.text?.toString()?.trim().orEmpty(),
+            ))
+            sheet.dismiss()
+            onChanged()
+        }.apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT) })
+        if (existing != null) box.addView(ctx.textButton("Удалить свою пару") {
+            MyLessons.delete(ctx, existing.id); sheet.dismiss(); onChanged()
+        }.apply { (layoutParams as? LinearLayout.LayoutParams)?.topMargin = ctx.dp(12) })
+        open(sheet, ctx, box)
     }
 
     private fun caption(ctx: Context, text: String) =

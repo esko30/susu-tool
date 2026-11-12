@@ -43,6 +43,9 @@ class NowWidget : AppWidgetProvider() {
         fun update(context: Context) {
             val mgr = AppWidgetManager.getInstance(context)
             mgr.getAppWidgetIds(ComponentName(context, NowWidget::class.java)).forEach { draw(context, mgr, it) }
+            // Маленькие виджеты (таймер, строка под часы) обновляются вместе с основным.
+            PairTimerWidget.updateAll(context)
+            NextPairWidget.updateAll(context)
         }
 
         private fun draw(context: Context, mgr: AppWidgetManager, id: Int) =
@@ -56,18 +59,18 @@ class NowWidget : AppWidgetProvider() {
             return ((h - 64) / 58).coerceIn(1, SLOTS.size)
         }
 
-        private fun lessons(context: Context): List<Lesson> {
+        internal fun lessons(context: Context): List<Lesson> {
             val store = Store(context)
             val s = store.own() ?: store.saved().firstOrNull() ?: return emptyList()
             val hidden = Prefs(context).hiddenLessons
-            return store.lessons(s.uid).filterNot { Hidden.isHidden(hidden, it) }
+            return (store.lessons(s.uid) + MyLessons.lessons(context, s.uid)).filterNot { Hidden.isHidden(hidden, it) }
         }
 
-        private fun start(l: Lesson) = LocalDateTime.parse("${l.date}T${l.beginTime}")
-        private fun end(l: Lesson) = LocalDateTime.parse("${l.date}T${l.endTime}")
+        internal fun start(l: Lesson) = LocalDateTime.parse("${l.date}T${l.beginTime}")
+        internal fun end(l: Lesson) = LocalDateTime.parse("${l.date}T${l.endTime}")
 
         /** «Сегодня, 10 ноября», «Завтра, 11 ноября», «Четверг, 12 ноября». */
-        private fun dayTitle(date: String, today: LocalDate): String = runCatching {
+        internal fun dayTitle(date: String, today: LocalDate): String = runCatching {
             val d = LocalDate.parse(date)
             val dm = d.format(DateTimeFormatter.ofPattern("d MMMM", ru))
             when (d) {
@@ -93,7 +96,7 @@ class NowWidget : AppWidgetProvider() {
                 v.setViewVisibility(R.id.w_chip, View.GONE)
                 v.setViewVisibility(R.id.w_empty, View.VISIBLE)
                 v.setTextViewText(R.id.w_empty,
-                    if (!prefs.hasCredentials && all.isEmpty()) "Войдите в аккаунт, чтобы видеть ближайшие пары" else "На ближайшей неделе пар нет")
+                    if (!prefs.hasCredentials && all.isEmpty()) "Войдите в приложении, и здесь появятся пары" else "На ближайшей неделе пар нет")
             } else {
                 v.setViewVisibility(R.id.w_empty, View.GONE)
                 v.setViewVisibility(R.id.w_chip, View.VISIBLE)
@@ -142,19 +145,12 @@ class NowWidget : AppWidgetProvider() {
             val planned = Planner.all(context).count { !it.done && it.date == today.toString() }
             val more = listOfNotNull(
                 hiddenSameDay.takeIf { it > 0 }?.let { "ещё ${Remind.plural(it, "пара", "пары", "пар")}, растяните виджет" },
-                planned.takeIf { it > 0 }?.let { "✓ в планере сегодня: $it" },
+                planned.takeIf { it > 0 }?.let { "✓ сегодня в планере ${Remind.plural(it, "запись", "записи", "записей")}" },
             ).joinToString("   ")
             v.setTextViewText(R.id.w_more, more)
             v.setViewVisibility(R.id.w_more, if (more.isBlank()) View.GONE else View.VISIBLE)
 
-            val open = PendingIntent.getActivity(
-                context, 77,
-                Intent(context, MainActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    .putExtra(Notifier.EXTRA_TAB, Syncer.TAB_SCHEDULE),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
-            v.setOnClickPendingIntent(R.id.widget_root, open)
+            v.setOnClickPendingIntent(R.id.widget_root, openApp(context))
             scheduleTick(context, list, now)
             return v
         }
@@ -163,7 +159,16 @@ class NowWidget : AppWidgetProvider() {
          * Следующая перерисовка: к концу или началу ближайшей пары; пока пара идёт или до неё
          * меньше трёх часов — чаще, ради отсчёта «ещё …» / «через …».
          */
-        private fun scheduleTick(context: Context, list: List<Lesson>, now: LocalDateTime) {
+        /** Нажатие на любой виджет открывает расписание. */
+        internal fun openApp(context: Context): PendingIntent = PendingIntent.getActivity(
+            context, 77,
+            Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(Notifier.EXTRA_TAB, Syncer.TAB_SCHEDULE),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+
+        internal fun scheduleTick(context: Context, list: List<Lesson>, now: LocalDateTime) {
             val candidates = buildList {
                 list.take(3).forEach { add(start(it)); add(end(it)) }
                 list.firstOrNull()?.let { if (Duration.between(now, start(it)).toMinutes() < 180) add(now.plusMinutes(5)) }

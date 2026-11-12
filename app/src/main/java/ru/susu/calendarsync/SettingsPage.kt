@@ -55,25 +55,19 @@ class SettingsPage : Page() {
         ).apply { topMargin = requireContext().dp(4) }
     }
 
+
     /** Телефон ограничивает работу в фоне — показываем, как это исправить. */
     private fun batteryWarning(root: android.widget.LinearLayout) {
         val ctx = requireContext()
-            val pm = ctx.getSystemService(android.os.PowerManager::class.java)
-            if (pm != null && !pm.isIgnoringBatteryOptimizations(ctx.packageName)) {
-                root.addView(ctx.card(
-                    ctx.text("Проверки могут задерживаться", 15f, bold = true),
-                    ctx.secondary("Телефон экономит батарею и может откладывать фоновые проверки на часы. " +
-                        "Разрешите SUSU Tool работать в фоне, чтобы уведомления о переносах и оценках приходили вовремя."),
-                    ctx.button("Разрешить работу в фоне", outlined = true) {
-                        runCatching {
-                            startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                                .setData(android.net.Uri.parse("package:${ctx.packageName}")))
-                        }.onFailure {
-                            runCatching { startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
-                        }
-                    },
-                ))
-            }
+        if (!Battery.restricted(ctx)) return
+        val views = mutableListOf<View>(
+            ctx.text("Проверки могут задерживаться", 15f, bold = true),
+            ctx.secondary("Телефон бережёт батарею и может откладывать проверки на часы. " +
+                "Разрешите приложению работать в фоне, и уведомления будут приходить вовремя."),
+        )
+        Battery.vendorHint()?.let { views += ctx.secondary(it) }
+        views += ctx.button("Разрешить работу в фоне", outlined = true) { Battery.open(ctx) }
+        root.addView(ctx.card(*views.toTypedArray()))
     }
 
     private val reminderValues = listOf(0, 5, 10, 15, 30, 60)
@@ -90,9 +84,9 @@ class SettingsPage : Page() {
         when (section) {
             SECTION_CALENDAR -> return subPage("Календарь телефона") { root ->
         // Календарь.
-        root.addView(ctx.secondary("В календарь попадают расписания, у которых включено «Добавлять в календарь». " +
-            "Для каждого создаётся отдельный календарь SUSU Tool."))
-        root.addView(ctx.text("Промежуток синхронизации", 14f).apply { setPadding(0, ctx.dp(10), 0, 0) })
+        root.addView(ctx.secondary("Сюда попадают расписания, где включено «Добавлять в календарь». " +
+            "Для каждого заводится свой календарь."))
+        root.addView(ctx.text("За какой период добавлять пары", 14f).apply { setPadding(0, ctx.dp(10), 0, 0) })
         val ranges = CalendarRange.values().toList()
         root.addView(ctx.spinner(ranges.map { it.label }, ranges.indexOf(prefs.calendarRange)) { i ->
             if (ranges[i] == CalendarRange.CUSTOM) pickRange(prefs) else {
@@ -105,16 +99,19 @@ class SettingsPage : Page() {
             root.addView(ctx.secondary("с ${w.from?.format(dateFmt) ?: "…"} по ${w.to?.format(dateFmt) ?: "…"}"))
             root.addView(ctx.textButton("Изменить даты") { pickRange(prefs) })
         }
-        root.addView(ctx.text("Напоминание перед занятием", 14f).apply { setPadding(0, ctx.dp(10), 0, 0) })
+        root.addView(ctx.text("Напоминать перед парой", 14f).apply { setPadding(0, ctx.dp(10), 0, 0) })
         root.addView(ctx.spinner(reminderLabels, reminderValues.indexOf(prefs.reminderMinutes).coerceAtLeast(0)) { i ->
             prefs.reminderMinutes = reminderValues[i]
         })
-        root.addView(ctx.secondary("Новые настройки календаря применяются при следующей синхронизации."))
+        root.addView(ctx.switch("Короткие названия типов, например «Практики»", prefs.display.shortTypes) {
+            prefs.display = prefs.display.copy(shortTypes = it)
+        })
+        root.addView(ctx.secondary("Изменения появятся в календаре после следующего обновления."))
 
             }
             SECTION_NOTIFY -> return subPage("Уведомления и звуки") { root ->
         // Автообновление и уведомления.
-        root.addView(ctx.text("Проверять изменения", 14f))
+        root.addView(ctx.text("Как часто проверять портал", 14f))
         root.addView(ctx.spinner(intervalLabels, intervalValues.indexOf(prefs.syncIntervalHours).coerceAtLeast(0)) { i ->
             prefs.syncIntervalHours = intervalValues[i]
             SyncWorker.schedule(ctx.applicationContext)
@@ -122,12 +119,11 @@ class SettingsPage : Page() {
         })
         if (prefs.syncIntervalHours > 0) {
             val last = prefs.lastBackgroundCheck
-            root.addView(ctx.secondary(if (last == 0L) "Фоновая проверка ещё не запускалась"
-                else "Последняя фоновая проверка: " + java.text.SimpleDateFormat("d MMMM, HH:mm", java.util.Locale("ru")).format(java.util.Date(last))))
+            root.addView(ctx.secondary(if (last == 0L) "В фоне ещё ни разу не проверял"
+                else "Последний раз проверял " + java.text.SimpleDateFormat("d MMMM, HH:mm", java.util.Locale("ru")).format(java.util.Date(last))))
             batteryWarning(root)
         }
-        root.addView(ctx.switch("Уведомлять о новых КРМ и изменениях оценок", prefs.monitorGrades) { prefs.monitorGrades = it })
-        root.addView(ctx.secondary("Уведомления о переносах приходят по расписаниям, у которых включено «Следить за изменениями»."))
+        root.addView(ctx.secondary("Ищу переносы и отмены пар, новые КРМ, баллы и оценки. Переносы ищу в расписаниях, где включено «Следить за изменениями»."))
 
         // Звуки уведомлений: встроенные, системный, без звука или любой из телефона. При выборе звук проигрывается.
         fun soundPicker(label: String, current: String, save: (String) -> Unit) {
@@ -145,8 +141,11 @@ class SettingsPage : Page() {
                 }
             })
         }
-        soundPicker("Звук: изменения в расписании", prefs.soundSchedule) { prefs.soundSchedule = it }
-        soundPicker("Звук: оценки и КРМ", prefs.soundGrades) { prefs.soundGrades = it }
+        soundPicker("Звук переносов и отмен", prefs.soundSchedule) { prefs.soundSchedule = it }
+        soundPicker("Звук итоговых оценок", prefs.soundGrades) { prefs.soundGrades = it }
+        root.addView(ctx.textButton("Показать, как выглядят уведомления") {
+            Notifier.notifyGrades(ctx.applicationContext, prefs.currentTerm, GradeNews.sample())
+        })
 
             }
             SECTION_ABOUT -> return subPage("О приложении") { root ->
@@ -179,25 +178,22 @@ class SettingsPage : Page() {
         // О приложении и данных.
         root.addView(ctx.section("О приложении и данных"))
         root.addView(ctx.card(
-            ctx.text("SUSU Tool: неофициальное приложение", 15f, bold = true),
+            ctx.text("Это неофициальное приложение", 15f, bold = true),
             ctx.secondary(
-                "Приложение работает через те же официальные запросы, что и ЮУрГУ-Онлайн (online.susu.ru): " +
-                    "вход, расписание, поиск, успеваемость и пропуск. Других серверов у приложения нет. " +
-                    "Данные не передаются никуда, кроме online.susu.ru. Аналитики и рекламы нет.\n\n" +
-                    "Все права на систему ЮУрГУ-Онлайн и её данные принадлежат ФГАОУ ВО «ЮУрГУ (НИУ)». " +
-                    "Разработчик SUSU Tool не связан с университетом и ни на что не претендует.", 13f,
+                "Приложение обращается только к online.susu.ru, теми же запросами, что и сайт. " +
+                    "Своих серверов, аналитики и рекламы у него нет.\n\n" +
+                    "ЮУрГУ-Онлайн и все его данные принадлежат ЮУрГУ. " +
+                    "Разработчик приложения с университетом не связан.", 13f,
             ).apply { setPadding(0, ctx.dp(6), 0, 0); setLineSpacing(0f, 1.15f) },
         ))
         root.addView(ctx.card(
             ctx.text("Что хранится на телефоне", 15f, bold = true),
             ctx.secondary(
-                "• Логин и пароль хранятся в зашифрованном хранилище Android (ключ в Android Keystore), чтобы входить автоматически.\n" +
-                    "• Сохранённые расписания, оценки, баллы КРМ и история изменений лежат в личной папке приложения, " +
-                    "недоступной другим приложениям.\n" +
-                    "• Код пропуска хранится в зашифрованном виде, чтобы пропуск открывался без интернета.\n" +
-                    "• Занятия попадают в отдельные локальные календари SUSU Tool на телефоне, только для расписаний " +
-                    "с включённым «Добавлять в календарь». С Google они не синхронизируются.\n\n" +
-                    "Всё удаляется кнопкой «Выйти и удалить все данные и календари» или вместе с приложением.", 13f,
+                "• Логин и пароль зашифрованы, чтобы входить автоматически.\n" +
+                    "• Расписания, оценки и история изменений лежат в папке приложения, другие приложения её не видят.\n" +
+                    "• Код пропуска зашифрован, поэтому пропуск открывается без интернета.\n" +
+                    "• Пары попадают в календари на самом телефоне. С Google они не синхронизируются.\n\n" +
+                    "Кнопка «Выйти» или удаление приложения стирают всё.", 13f,
             ).apply { setPadding(0, ctx.dp(6), 0, 0); setLineSpacing(0f, 1.15f) },
         ))
 
@@ -227,11 +223,11 @@ class SettingsPage : Page() {
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
             ).apply { topMargin = ctx.dp(8) }
         })
-        root.addView(ctx.button(if (loading) "Синхронизация…" else "Сохранить и синхронизировать всё") {
+        root.addView(ctx.button(if (loading) "Вхожу…" else "Войти") {
             val login = loginInput.text.toString().trim()
             val pass = passInput.text.toString()
             if (login.isEmpty() || pass.isEmpty()) {
-                prefs.lastStatus = "Заполните логин и пароль"
+                prefs.lastStatus = "Введите логин и пароль"
                 render()
                 return@button
             }
@@ -251,19 +247,19 @@ class SettingsPage : Page() {
             ctx.text("$title  ›", 16f, bold = true), ctx.secondary(sub),
         ) { open() })
         root.addView(ctx.section("Настройки"))
-        link("Внешний вид", "Тема, карточки пар, прогресс и анимации") { main.openAppearance() }
-        link("Уведомления и звуки", "Проверка изменений, оценки, звуки") { main.openSettings(SECTION_NOTIFY) }
-        link("Календарь телефона", "Пары в календаре, промежуток, напоминания") { main.openSettings(SECTION_CALENDAR) }
+        link("Внешний вид", "Тема, шрифт и карточки пар") { main.openAppearance() }
+        link("Уведомления и звуки", "Как часто проверять и какие звуки") { main.openSettings(SECTION_NOTIFY) }
+        link("Календарь телефона", "Пары в календаре телефона и напоминания") { main.openSettings(SECTION_CALENDAR) }
         // Поддержка проекта.
         root.addView(ctx.section("Поддержать SUSU Tool"))
         root.addView(ctx.card(
             ctx.text("Пожертвовать  ›", 16f, bold = true),
-            ctx.secondary("Если приложение помогает, можно поддержать разработку переводом через СБП."),
+            ctx.secondary("Если приложение помогает, можно поддержать его переводом через СБП."),
         ) { Donate.open(requireActivity()) })
 
 
         root.addView(ctx.section("Приложение"))
-        link("О приложении", "Помощь, обновления, «Что нового», данные и безопасность") { main.openSettings(SECTION_ABOUT) }
+        link("О приложении", "Помощь, обновления и где хранятся данные") { main.openSettings(SECTION_ABOUT) }
         root.addView(ctx.secondary("SUSU Tool · версия ${BuildConfig.VERSION_NAME}").apply { setPadding(0, ctx.dp(16), 0, 0) })
         return ctx.scroll(root)
     }
@@ -302,7 +298,7 @@ class SettingsPage : Page() {
         val today = LocalDate.now(CalendarSync.SUSU_ZONE)
         fun LocalDate.utcMillis() = atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
         val picker = MaterialDatePicker.Builder.dateRangePicker()
-            .setTitleText("Промежуток для календаря")
+            .setTitleText("Период для календаря")
             .setSelection(APair((w.from ?: today).utcMillis(), (w.to ?: today.plusMonths(1)).utcMillis()))
             .build()
         picker.addOnPositiveButtonClickListener { sel ->
@@ -411,8 +407,8 @@ class SettingsPage : Page() {
     private fun confirmReset() {
         val ctx = requireContext()
         MaterialAlertDialogBuilder(ctx)
-            .setTitle("Выйти из аккаунта?")
-            .setMessage("Будут удалены все календари SUSU Tool с занятиями, сохранённые расписания, оценки, история изменений и учётные данные.")
+            .setTitle("Выйти?")
+            .setMessage("С телефона удалятся календари с парами, сохранённые расписания, оценки, история и логин с паролем.")
             .setPositiveButton("Удалить") { _, _ ->
                 val app = ctx.applicationContext
                 background({
@@ -424,6 +420,7 @@ class SettingsPage : Page() {
                     ChangeLog(app).clear()
                     Planner.clear(app)
                     Profile.clear(app)
+                    MyLessons.clear(app)
                     Prefs(app).clear()
                     Session.reset()
                 }) {

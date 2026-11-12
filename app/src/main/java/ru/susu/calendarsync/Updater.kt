@@ -95,7 +95,7 @@ object Updater {
             r.onSuccess { info ->
                 if (info == null) done("У вас последняя версия ${BuildConfig.VERSION_NAME}")
                 else { done("Доступна версия ${info.version}"); offer(activity, scope, info) }
-            }.onFailure { done("Не удалось проверить обновления: ${it.message}") }
+            }.onFailure { done("Не получилось проверить обновления") }
         }
     }
 
@@ -103,7 +103,7 @@ object Updater {
         val size = if (info.size > 0) " · ${"%.1f".format(info.size / 1048576.0)} МБ" else ""
         MaterialAlertDialogBuilder(activity)
             .setTitle("Доступна версия ${info.version}$size")
-            .setMessage(info.notes.ifBlank { "Новая версия SUSU Tool." })
+            .setMessage(info.notes.ifBlank { "Новая версия приложения" })
             .setPositiveButton("Обновить") { _, _ -> download(activity, scope, info) }
             .setNegativeButton("Позже", null)
             .setNeutralButton("Пропустить версию") { _, _ -> Prefs(activity).skippedVersion = info.version }
@@ -115,7 +115,7 @@ object Updater {
         if (!activity.packageManager.canRequestPackageInstalls()) {
             MaterialAlertDialogBuilder(activity)
                 .setTitle("Нужно разрешение")
-                .setMessage("Разрешите SUSU Tool устанавливать обновления, затем снова нажмите «Обновить».")
+                .setMessage("Разрешите приложению ставить обновления и снова нажмите «Обновить».")
                 .setPositiveButton("Открыть настройки") { _, _ ->
                     activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}")))
                 }
@@ -135,7 +135,7 @@ object Updater {
             }
             dialog.dismiss()
             file.onSuccess { install(activity, it) }.onFailure {
-                MaterialAlertDialogBuilder(activity).setMessage("Не удалось скачать обновление: ${it.message}")
+                MaterialAlertDialogBuilder(activity).setMessage("Не получилось скачать обновление")
                     .setPositiveButton("OK", null).show()
             }
         }

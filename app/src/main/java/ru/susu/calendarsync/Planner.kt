@@ -237,7 +237,7 @@ class PlannerReceiver : BroadcastReceiver() {
             if (item.note.isNotBlank()) append("\n").append(item.note)
         }
         val n = NotificationCompat.Builder(context, Planner.CHANNEL)
-            .setSmallIcon(R.drawable.ic_nav_schedule)
+            .setSmallIcon(R.drawable.ic_notif_planner)
             .setContentTitle(title)
             .setContentText(text.lineSequence().first())
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
@@ -258,6 +258,7 @@ class BootReceiver : BroadcastReceiver() {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             Planner.rescheduleAll(context)
             runCatching { SyncWorker.ensure(context) }
+            runCatching { Duty.resume(context) }
             runCatching { NowWidget.update(context) }
         }
     }

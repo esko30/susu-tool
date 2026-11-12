@@ -75,11 +75,11 @@ object SusuApi {
         when (code) {
             in 200..299 -> Unit
             400, 401, 403 -> throw AuthException("Неверный логин или пароль")
-            else -> throw IOException("Ошибка входа: HTTP $code")
+            else -> throw IOException("Портал не пустил, код $code")
         }
         val json = JSONObject(text)
         val token = json.optString("accessToken").ifEmpty {
-            throw AuthException(json.optString("message").ifEmpty { "Портал не выдал токен доступа" })
+            throw AuthException(json.optString("message").ifEmpty { "Портал не пустил, попробуйте ещё раз" })
         }
 
         val instructor = json.opt("instructor")
@@ -89,7 +89,7 @@ object SusuApi {
         } else {
             json.optJSONArray("student")?.optJSONObject(0)?.optString("groupId").orEmpty()
         }
-        if (scheduleId.isEmpty()) throw IOException("Не удалось определить группу или преподавателя")
+        if (scheduleId.isEmpty()) throw IOException("Не понял, чьё это расписание")
 
         val name = listOf("lastName", "firstName", "middleName")
             .map { json.optString(it) }.filter { it.isNotEmpty() && it != "null" }
@@ -103,7 +103,7 @@ object SusuApi {
             arr.optJSONObject(i)?.let { parseLesson(it) }
         }
         if (arr.length() > 0 && lessons.isEmpty()) {
-            throw IOException("Не удалось разобрать расписание: формат ответа изменился")
+            throw IOException("Портал прислал расписание в непонятном виде")
         }
         return lessons
     }
@@ -112,8 +112,8 @@ object SusuApi {
         val (code, text) = request(
             "POST", "$BASE/api/Schedule/SearchSchedules", body = form("searchValue" to query), token = token,
         )
-        if (code == 401) throw AuthException("Сессия истекла")
-        if (code !in 200..299) throw IOException("Ошибка поиска: HTTP $code")
+        if (code == 401) throw AuthException("Нужно войти заново")
+        if (code !in 200..299) throw IOException("Поиск не сработал, код $code")
         val arr = JSONArray(text)
         return (0 until arr.length()).mapNotNull { i ->
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
@@ -133,8 +133,8 @@ object SusuApi {
     /** Сырой GET с токеном; 401 превращается в AuthException, чтобы вызывающий мог перелогиниться. */
     fun get(token: String, path: String): String {
         val (code, text) = request("GET", BASE + path, token = token)
-        if (code == 401) throw AuthException("Сессия истекла")
-        if (code !in 200..299) throw IOException("Ошибка запроса к порталу: HTTP $code")
+        if (code == 401) throw AuthException("Нужно войти заново")
+        if (code !in 200..299) throw IOException("Портал ответил ошибкой $code")
         return text
     }
 

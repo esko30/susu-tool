@@ -62,7 +62,7 @@ class MainActivity : AppCompatActivity() {
         photoCallback = onTaken
         runCatching { camera.launch(uri) }.onFailure {
             photoCallback = null
-            android.widget.Toast.makeText(this, "Не удалось открыть камеру", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(this, "Не получилось открыть камеру", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -89,6 +89,7 @@ class MainActivity : AppCompatActivity() {
             androidx.core.view.ViewCompat.onApplyWindowInsets(v, insets)
         }
 
+        b.bottomNav.setOnItemReselectedListener { }
         b.bottomNav.setOnItemSelectedListener { item ->
             if (item.itemId != b.bottomNav.selectedItemId) b.bottomNav.haptic()
             showPage(tabs.indexOf(item.itemId))
@@ -100,6 +101,7 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState == null) {
             showTab(start)
             if (target == Syncer.TAB_HISTORY) b.root.post { openHistory() }
+            openSubjectFrom(intent)
             handleShortcut(intent)
             if (!Prefs(this).onboardingDone) b.root.post { Onboarding.show(this) }
             else {
@@ -135,20 +137,20 @@ class MainActivity : AppCompatActivity() {
         fun tab(id: Int): () -> View? = { b.bottomNav.findViewById(id) }
         val steps = listOf(
             TourStep(tagged("tour_selector"), "Выбор расписания",
-                "Своё расписание и сохранённые. Последний пункт «Найти и добавить» ищет группы, преподавателей и аудитории."),
+                "Здесь ваше расписание и сохранённые. Через «Найти и добавить» ищутся группы, преподаватели и аудитории."),
             TourStep(tagged("tour_history"), "Изменения",
-                "Что изменилось в расписаниях и оценках. Число на колокольчике показывает новые изменения с прошлого просмотра."),
+                "Что поменялось в расписании и оценках. Число на колокольчике значит, сколько нового."),
             TourStep(tagged("tour_more"), "Меню расписания",
-                "Обновить, вид «неделя», расписание звонков, уведомления о переносах и перенос пар в календарь."),
+                "Настройки расписания, вид по неделям, звонки и своя пара."),
             TourStep(tagged("tour_card"), "Карточка пары",
-                "Нажмите на пару, чтобы отметить контрольную или коллоквиум и поставить напоминание. " +
-                    "Смахните пару в сторону, чтобы скрыть её."),
-            TourStep(tab(R.id.nav_planner), "Планер", "Все записи по дням. Отметьте выполненное или поправьте напоминание."),
+                "Нажмите на пару, чтобы отметить контрольную и поставить напоминание. " +
+                    "Смахните пару, чтобы скрыть её."),
+            TourStep(tab(R.id.nav_planner), "Планер", "Все записи по дням. Отмечайте сделанное."),
             TourStep(tab(R.id.nav_grades), "Оценки",
-                "Рейтинг по дисциплинам. Откройте дисциплину и нажмите «Что если», чтобы задать будущие баллы за КРМ и посмотреть прогноз оценки."),
+                "Баллы по предметам. Откройте предмет и нажмите «Что если», чтобы прикинуть оценку."),
             TourStep(tab(R.id.nav_pass), "Пропуск",
-                "QR-код пропуска с максимальной яркостью."),
-            TourStep(tab(R.id.nav_settings), "Настройки", "Вход, календарь, уведомления и звуки, внешний вид, обновления."),
+                "QR-код пропуска, работает и без интернета."),
+            TourStep(tab(R.id.nav_settings), "Настройки", "Вход, уведомления, календарь и внешний вид."),
         )
         // Даём ленте открыться и прокрутиться к сегодняшнему дню.
         b.root.postDelayed({
@@ -170,6 +172,8 @@ class MainActivity : AppCompatActivity() {
 
     /** Экран дисциплины с «Что если». */
     fun openSubject(term: Int, key: String) = openNested(SubjectPage.of(term, key), "subject")
+
+    fun openDiploma() = openNested(DiplomaPage(), "diploma")
 
     /** «Что если» — отдельный экран поверх дисциплины; при выходе введённые баллы теряются. */
     fun openWhatIf(term: Int, key: String) = openNested(SubjectPage.of(term, key, whatIf = true), "whatif")
@@ -205,13 +209,34 @@ class MainActivity : AppCompatActivity() {
             Syncer.TAB_HISTORY -> { showTab(Syncer.TAB_SCHEDULE); b.root.post { openHistory() } }
             else -> showTab(t)
         }
+        openSubjectFrom(intent)
+    }
+
+    /** Уведомление об оценках по одному предмету: сразу открываем предмет. */
+    private fun openSubjectFrom(intent: Intent) {
+        val key = intent.getStringExtra(Notifier.EXTRA_SUBJECT) ?: return
+        val term = intent.getIntExtra(Notifier.EXTRA_TERM, 0)
+        intent.removeExtra(Notifier.EXTRA_SUBJECT)
+        if (key.startsWith("sample-")) return // пример из настроек: такого предмета нет
+        b.root.post { openSubject(term, key) }
     }
 
     fun showTab(index: Int) {
+        // Вкладка уже выбрана (при запуске это «Расписание» по умолчанию), а страницы ещё нет:
+        // панель сочтёт это повторным нажатием и не откроет страницу, поэтому открываем сами.
+        if (b.bottomNav.selectedItemId == tabs[index] && supportFragmentManager.findFragmentById(R.id.container) == null) {
+            showPage(index)
+            return
+        }
         b.bottomNav.selectedItemId = tabs[index]
     }
 
+    private var currentTab = -1
+
     private fun showPage(index: Int) {
+        // Направление сдвига: вкладка правее — новая страница въезжает справа, левее — слева.
+        val forward = index >= currentTab
+        currentTab = index
         val page: Fragment = when (index) {
             Syncer.TAB_PASS -> PassPage()
             Syncer.TAB_PLANNER -> PlannerPage()
@@ -222,7 +247,10 @@ class MainActivity : AppCompatActivity() {
         // При смене вкладки закрываем вложенные экраны (например, «Внешний вид»).
         supportFragmentManager.popBackStack(null, androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
         supportFragmentManager.beginTransaction()
-            .setCustomAnimations(R.anim.tab_in, R.anim.tab_out)
+            .setCustomAnimations(
+                if (forward) R.anim.tab_in_right else R.anim.tab_in_left,
+                if (forward) R.anim.tab_out_left else R.anim.tab_out_right,
+            )
             .replace(R.id.container, page).commit()
     }
 
@@ -255,11 +283,12 @@ class MainActivity : AppCompatActivity() {
 abstract class Page : Fragment() {
     protected val main get() = requireActivity() as MainActivity
     private var root: FrameLayout? = null
+    private var createdAt = 0L
 
     abstract fun build(): View
 
     override fun onCreateView(inflater: android.view.LayoutInflater, container: ViewGroup?, s: Bundle?): View =
-        FrameLayout(requireContext()).also { root = it; it.addView(build()) }
+        FrameLayout(requireContext()).also { root = it; createdAt = android.os.SystemClock.uptimeMillis(); it.addView(build()) }
 
     override fun onDestroyView() {
         root = null
@@ -274,7 +303,9 @@ abstract class Page : Fragment() {
         // Решение принимаем до build(): страница может сбросить свой флаг прокрутки во время сборки.
         val keep = keepScroll
         val fresh = build()
-        if (fade && old != null) {
+        // Сразу после открытия вкладки (она и так въезжает) второе затухание выглядит как двойное нажатие.
+        val justOpened = android.os.SystemClock.uptimeMillis() - createdAt < 700
+        if (fade && old != null && !justOpened) {
             fresh.alpha = 0f
             r.addView(fresh)
             fresh.animate().alpha(1f).setDuration(220).withEndAction { r.removeView(old) }.start()
@@ -303,8 +334,8 @@ abstract class Page : Fragment() {
     }
 
     protected fun errorText(e: Throwable) = when (e) {
-        is AuthException -> "Ошибка входа: ${e.message}"
-        is java.net.UnknownHostException -> "Нет подключения к интернету"
-        else -> "Ошибка: ${e.message ?: e.javaClass.simpleName}"
+        is AuthException -> e.message ?: "Не получилось войти"
+        is java.net.UnknownHostException -> "Нет интернета"
+        else -> e.message?.let { "Не получилось. $it" } ?: "Что-то пошло не так"
     }
 }

@@ -34,14 +34,14 @@ class PlannerPage : Page() {
             root.addView(ctx.card(
                 ctx.text("Записей пока нет", 16f, bold = true),
                 ctx.secondary(
-                    "Нажмите на пару в расписании, чтобы отметить контрольную, коллоквиум или домашнее задание " +
-                        "и поставить напоминание. Можно добавить и свою запись с любой датой и временем.", 14f,
+                    "Нажмите на пару в ленте, чтобы отметить контрольную или домашку. " +
+                        "Или добавьте свою запись на любой день.", 14f,
                 ).apply { setPadding(0, ctx.dp(6), 0, 0) },
             ))
             return ctx.scroll(root)
         }
 
-        if (upcoming.isEmpty()) root.addView(ctx.secondary("Предстоящих записей нет.").apply { setPadding(0, ctx.dp(8), 0, 0) })
+        if (upcoming.isEmpty()) root.addView(ctx.secondary("Впереди записей нет").apply { setPadding(0, ctx.dp(8), 0, 0) })
         upcoming.groupBy { it.date }.forEach { (date, list) ->
             root.addView(ctx.section(ChangeDiff.day(date).replaceFirstChar { it.uppercase() } + if (date == today) " · сегодня" else ""))
             list.forEach { root.addView(itemCard(it, lessons)) }
@@ -96,7 +96,7 @@ class PlannerPage : Page() {
             }
         })
         if (item.reminders.isNotEmpty() && !item.done) col.addView(ctx.secondary(
-            (if (item.reminders.size == 1) "Напоминание: " else "Напоминания: ") +
+            "Напомню " +
                 item.reminders.joinToString(", ") { it.label(!item.custom).lowercase() }, 12f,
         ).apply {
             setPadding(0, ctx.dp(4), 0, 0)

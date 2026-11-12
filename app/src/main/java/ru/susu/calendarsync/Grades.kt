@@ -174,22 +174,19 @@ object Grades {
             for (e in s.events) {
                 val prev = oldEvents[e.key]
                 if (prev == null) {
-                    val pts = if (e.point != null) ": ${fmt(e.point)} из ${fmt(e.maxPoint)}" else ""
-                    lines += Change(Change.Kind.KRM_NEW, today, s.name, "${e.category}: ${e.name}$pts")
+                    lines += Change(Change.Kind.KRM_NEW, today, s.name,
+                        if (e.point != null) "${fmt(e.point)} из ${fmt(e.maxPoint)} за «${e.name}»" else "Новое КРМ «${e.name}»")
                 } else if (prev.point != e.point || prev.maxPoint != e.maxPoint) {
                     lines += Change(
                         Change.Kind.GRADE, today, s.name,
-                        "${e.name}: ${fmt(prev.point)} → ${fmt(e.point)} из ${fmt(e.maxPoint)}",
+                        if (prev.point != null && e.point != null && e.point < prev.point)
+                            "Балл за «${e.name}» снизили с ${fmt(prev.point)} до ${fmt(e.point)}"
+                        else "${fmt(e.point)} из ${fmt(e.maxPoint)} за «${e.name}»",
                     )
                 }
             }
             if (o.mark != s.mark) {
-                lines += Change(Change.Kind.GRADE, today, s.name, "${s.controlLabel}: ${markText(o.mark)} → ${markText(s.mark)}")
-            }
-            if (o.bestRating != s.bestRating) {
-                val text = "рейтинг ${fmt(o.bestRating)} → ${fmt(s.bestRating)}%"
-                if (lines.isEmpty()) lines += Change(Change.Kind.GRADE, today, s.name, text.replaceFirstChar { it.uppercase() })
-                else lines[0] = lines[0].copy(text = lines[0].text + "; $text")
+                lines += Change(Change.Kind.GRADE, today, s.name, GradeNews.finalText(s))
             }
             result += lines
         }
@@ -331,13 +328,22 @@ object Forecast {
     }
 
     /** Оценка по рейтингу (БРС ЮУрГУ): 85 отлично, 75 хорошо, 60 удовлетворительно или зачтено. */
+    /**
+     * Округление по БРС в пользу студента: порог взят, если рейтинг больше «порог − 1»
+     * (59,01 — уже зачёт и тройка, 74,1 — четвёрка, 84,1 — пятёрка).
+     */
+    fun reaches(rating: Double, threshold: Double) = rating > threshold - 1 + 1e-9
+
     fun markFor(rating: Double, credit: Boolean): String = when {
-        credit -> if (rating >= 60) "зачтено" else "не зачтено"
-        rating >= 85 -> "5 · отлично"
-        rating >= 75 -> "4 · хорошо"
-        rating >= 60 -> "3 · удовлетворительно"
+        credit -> if (reaches(rating, 60.0)) "зачтено" else "не зачтено"
+        reaches(rating, 85.0) -> "5 · отлично"
+        reaches(rating, 75.0) -> "4 · хорошо"
+        reaches(rating, 60.0) -> "3 · удовлетворительно"
         else -> "2 · неудовлетворительно"
     }
+
+    /** Сколько реально нужно набрать для порога с учётом округления: чуть больше «порог − 1». */
+    private fun effective(target: Double) = target - 1 + 0.01
 
     /** КРМ текущего контроля без баллов, которым ещё не задали значение «что если». */
     fun remaining(s: SubjectGrades, ov: Map<String, Double>) =
@@ -350,13 +356,13 @@ object Forecast {
         if (rest.isEmpty() || sumW <= 0) return null
         val perPercent = rest.sumOf { weight(it) } / sumW
         if (perPercent <= 0) return null
-        return (target - current(s, ov)) / perPercent
+        return (effective(target) - current(s, ov)) / perPercent
     }
 
     /** Процент на экзамене, нужный для [target] при отказе от БРС; null, если экзамена нет. */
     fun neededExam(s: SubjectGrades, ov: Map<String, Double>, target: Double): Double? {
         if (!hasExam(s)) return null
         val share = examShare(s)
-        return (target - (1 - share) * current(s, ov)) / share
+        return (effective(target) - (1 - share) * current(s, ov)) / share
     }
 }

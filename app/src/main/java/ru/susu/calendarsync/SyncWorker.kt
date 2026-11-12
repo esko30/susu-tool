@@ -43,7 +43,7 @@ object Syncer {
             if (changes.isNotEmpty()) {
                 val source = if (s.own) "Моё расписание" else s.label
                 ChangeLog(context).add(ChangeSet(System.currentTimeMillis(), source, changes))
-                Notifier.notifyChanges(context, Notifier.CHANNEL_SCHEDULE, "Изменения: $source", changes, TAB_HISTORY)
+                Notifier.notifyChanges(context, Notifier.CHANNEL_SCHEDULE, if (s.own) "Изменения в расписании" else "Изменения в расписании $source", changes, TAB_HISTORY)
             }
         }
         store.saveLessons(s.uid, lessons)
@@ -72,10 +72,8 @@ object Syncer {
             val changes = Grades.diff(old, snapshot)
             if (changes.isNotEmpty()) {
                 ChangeLog(context).add(ChangeSet(System.currentTimeMillis(), "Оценки, ${snapshot.term} семестр", changes))
-                val krm = changes.count { it.kind == Change.Kind.KRM_NEW }
-                val title = if (krm > 0) "Новые КРМ и оценки" else "Изменения в оценках"
-                Notifier.notifyChanges(context, Notifier.CHANNEL_GRADES, title, changes, TAB_HISTORY)
             }
+            Notifier.notifyGrades(context, snapshot.term, GradeNews.of(old, snapshot))
         }
         gs.save(snapshot)
         return snapshot
@@ -84,7 +82,7 @@ object Syncer {
     /** Полный цикл: все сохранённые расписания + оценки. */
     suspend fun run(context: Context): String = withContext(Dispatchers.IO) {
         val prefs = Prefs(context)
-        check(prefs.hasCredentials) { "Не указаны логин и пароль" }
+        check(prefs.hasCredentials) { "Введите логин и пароль" }
         val auth = Session.login(context, force = true)
 
         val errors = ArrayList<String>()
@@ -102,7 +100,7 @@ object Syncer {
             try {
                 syncGrades(context)
             } catch (e: Exception) {
-                errors += "Оценки: ${e.message}"
+                errors += "Оценки не обновились"
             }
         }
 
@@ -149,16 +147,93 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
 
     override suspend fun doWork(): Result {
         val prefs = Prefs(applicationContext)
+        val ultra = inputData.getBoolean(Duty.KEY, false)
+        if (ultra && !Duty.active(applicationContext)) return Result.success()
+        // Разброс 0–2 минуты: запросы всех пользователей не приходят на портал в одну секунду.
+        // У Дежурного разброс уже заложен во время будильника.
+        if (!ultra) kotlinx.coroutines.delay(kotlin.random.Random.nextLong(0, Duty.JITTER_MS))
         prefs.lastBackgroundCheck = System.currentTimeMillis()
         return try {
             prefs.lastStatus = Syncer.run(applicationContext)
             Result.success()
         } catch (e: AuthException) {
-            prefs.lastStatus = "Ошибка входа: ${e.message}"
+            prefs.lastStatus = e.message ?: "Не получилось войти"
             Result.failure()
         } catch (e: Exception) {
-            prefs.lastStatus = "Ошибка автосинхронизации: ${e.message}"
-            if (runAttemptCount < 3) Result.retry() else Result.failure()
+            prefs.lastStatus = "Не получилось обновить. ${e.message.orEmpty()}".trim()
+            // У «Дежурного» не повторяем сразу, а ждём следующий будильник.
+            if (ultra) Result.success()
+            else if (runAttemptCount < 3) Result.retry() else Result.failure()
         }
+    }
+}
+
+/**
+ * «Дежурный»: от 1 до 12 часов проверка изменений каждые 5 минут (плюс разброс до 2 минут).
+ * Будит его системный будильник, который срабатывает и в глубоком сне телефона (allowWhileIdle),
+ * а саму проверку запускает срочная задача WorkManager. Цепочка будильников не зависит от того,
+ * удалась ли проверка, и восстанавливается после перезагрузки.
+ */
+object Duty {
+    const val KEY = "ultra"
+    private const val WORK = "susu_ultra"
+    const val STEP_MIN = 5L
+    const val JITTER_MS = 120_000L
+
+    fun active(c: Context) = Prefs(c).ultraUntil > System.currentTimeMillis()
+
+    fun start(c: Context, hours: Int) {
+        Prefs(c).ultraUntil = System.currentTimeMillis() + hours.coerceIn(1, 12) * 3600_000L
+        check(c)
+        scheduleAlarm(c)
+    }
+
+    fun stop(c: Context) {
+        Prefs(c).ultraUntil = 0
+        c.getSystemService(android.app.AlarmManager::class.java).cancel(alarm(c))
+        WorkManager.getInstance(c).cancelUniqueWork(WORK)
+    }
+
+    /** После перезагрузки или обновления будильники пропадают — ставим заново, если Дежурный ещё работает. */
+    fun resume(c: Context) {
+        if (active(c)) scheduleAlarm(c) else if (Prefs(c).ultraUntil != 0L) stop(c)
+    }
+
+    /** Сработал будильник: проверяем и ставим следующий. */
+    internal fun onAlarm(c: Context) {
+        if (!active(c)) { stop(c); return }
+        check(c)
+        scheduleAlarm(c)
+    }
+
+    private fun scheduleAlarm(c: Context) {
+        val until = Prefs(c).ultraUntil
+        val at = System.currentTimeMillis() + STEP_MIN * 60_000L + kotlin.random.Random.nextLong(0, JITTER_MS)
+        val am = c.getSystemService(android.app.AlarmManager::class.java)
+        if (at > until) { am.cancel(alarm(c)); return }
+        val exact = android.os.Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
+        if (exact) am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, at, alarm(c))
+        else am.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, at, alarm(c))
+    }
+
+    /** Проверка сейчас. Если прошлая ещё идёт, новую не начинаем. */
+    private fun check(c: Context) {
+        val b = androidx.work.OneTimeWorkRequestBuilder<SyncWorker>()
+            .setInputData(androidx.work.workDataOf(KEY to true))
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+        // Срочная задача не ждёт окна обслуживания в сне; на Android 11 и ниже она обычная.
+        if (android.os.Build.VERSION.SDK_INT >= 31) b.setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+        WorkManager.getInstance(c).enqueueUniqueWork(WORK, androidx.work.ExistingWorkPolicy.KEEP, b.build())
+    }
+
+    private fun alarm(c: Context) = android.app.PendingIntent.getBroadcast(
+        c, 80, android.content.Intent(c, DutyReceiver::class.java),
+        android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+}
+
+class DutyReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: android.content.Intent) {
+        runCatching { Duty.onAlarm(context) }
     }
 }

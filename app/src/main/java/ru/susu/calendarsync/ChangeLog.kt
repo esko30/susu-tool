@@ -80,9 +80,9 @@ object ChangeDiff {
             val new = addedLeft.firstOrNull { it.date == old.date && it.subject == old.subject }
             if (new != null) {
                 addedLeft.remove(new)
-                val parts = mutableListOf("${old.begin}–${old.end} → ${new.begin}–${new.end}")
+                val parts = mutableListOf("${day(old.date).replaceFirstChar { it.uppercase() }} теперь ${new.begin}–${new.end}, было ${old.begin}–${old.end}")
                 parts += fieldDiff(old, new)
-                result += Change(Change.Kind.MOVED, old.date, old.title, "${day(old.date)}: " + parts.joinToString("; "))
+                result += Change(Change.Kind.MOVED, old.date, old.title, parts.joinToString(". "))
             } else {
                 result += Change(Change.Kind.REMOVED, old.date, old.title, old.full())
             }
@@ -93,7 +93,7 @@ object ChangeDiff {
         for ((old, new) in modified) {
             val diff = fieldDiff(old, new)
             if (diff.isEmpty()) continue // поменялось только напоминание
-            result += Change(Change.Kind.MODIFIED, new.date, new.title, "${new.whenText()}: " + diff.joinToString("; "))
+            result += Change(Change.Kind.MODIFIED, new.date, new.title, "${new.whenText()}. " + diff.joinToString(". "))
         }
         return result.sortedWith(compareBy({ it.date }, { it.text }))
     }
@@ -101,15 +101,15 @@ object ChangeDiff {
     /** Разница в месте и строках описания вида «Поле: значение». */
     private fun fieldDiff(old: LessonSnapshot, new: LessonSnapshot): List<String> {
         val out = mutableListOf<String>()
-        if (old.title != new.title) out += "название: ${old.title} → ${new.title}"
-        if (old.location != new.location) out += "место: ${old.location.ifBlank { "—" }} → ${new.location.ifBlank { "—" }}"
+        if (old.title != new.title) out += "Теперь называется «${new.title}»"
+        if (old.location != new.location) out += if (new.location.isBlank()) "Аудиторию убрали" else "Теперь в ${new.location}"
         val o = parseDetails(old.details)
         val n = parseDetails(new.details)
         for (field in (o.keys + n.keys).distinct()) {
             if (field == "Тип" && old.title != new.title) continue // уже видно по названию
             val a = o[field].orEmpty()
             val b = n[field].orEmpty()
-            if (a != b) out += "${field.lowercase()}: ${a.ifBlank { "—" }} → ${b.ifBlank { "—" }}"
+            if (a != b) out += if (b.isBlank()) "$field теперь не указан" else "$field теперь $b"
         }
         return out
     }
