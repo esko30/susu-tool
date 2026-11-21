@@ -183,6 +183,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("tightLines", false)
         set(v) = sp.edit { putBoolean("tightLines", v) }
 
+    /** Не показывать консультации в ленте, сетке недели и виджетах. */
+    var hideConsultations: Boolean
+        get() = sp.getBoolean("hideConsultations", false)
+        set(v) = sp.edit { putBoolean("hideConsultations", v) }
+
     /** Сколько часов дежурит «Дежурный» (1–12). */
     var dutyHours: Int
         get() = sp.getInt("dutyHours", 4)

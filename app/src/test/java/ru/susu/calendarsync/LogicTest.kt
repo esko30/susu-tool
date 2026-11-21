@@ -325,6 +325,17 @@ class TimelineTest {
     }
 }
 
+class ConsultationTest {
+    private fun l(type: String) = Lesson("Психосоматика", type, "2026-12-20", "10:00", "11:35", "624/3", "")
+
+    @Test fun detectsConsultations() {
+        assertTrue(isConsultation(l("Консультация")))
+        assertTrue(isConsultation(l("консультация перед экзаменом")))
+        assertFalse(isConsultation(l("Лекция")))
+        assertFalse(isConsultation(l("Экзамен")))
+    }
+}
+
 class GradeNewsTest {
     private fun subj(name: String, mark: String = "", control: String = "Экзамен", vararg ev: PointEvent) =
         SubjectGrades("d-$name", name, 7, "1", "", control, mark, null, "", "", null, null, ev.toList())

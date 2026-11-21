@@ -49,14 +49,27 @@ object Syncer {
         store.saveLessons(s.uid, lessons)
         store.find(s.uid)?.let { store.upsert(it.copy(lastUpdate = System.currentTimeMillis())) }
 
-        if (hasCalendarPermission(context)) {
-            val cal = CalendarSync(context)
-            val display = prefs.display
-            val forCalendar = lessons.map { it.copy(eventType = display.typeName(it.eventType)) }
-            if (s.toCalendar) cal.sync(s.calendarKey, s.calendarTitle, forCalendar, prefs.reminderMinutes, DateWindow.of(prefs))
-            else cal.deleteCalendar(s.calendarKey)
-        }
+        syncCalendar(context, s, lessons)
         return lessons
+    }
+
+    /** Переносит пары расписания в его календарь (или убирает календарь). Консультации — по настройке. */
+    private fun syncCalendar(context: Context, s: SavedSchedule, lessons: List<Lesson>) {
+        if (!hasCalendarPermission(context)) return
+        val prefs = Prefs(context)
+        val cal = CalendarSync(context)
+        val display = prefs.display
+        val forCalendar = lessons
+            .filterNot { prefs.hideConsultations && isConsultation(it) }
+            .map { it.copy(eventType = display.typeName(it.eventType)) }
+        if (s.toCalendar) cal.sync(s.calendarKey, s.calendarTitle, forCalendar, prefs.reminderMinutes, DateWindow.of(prefs))
+        else cal.deleteCalendar(s.calendarKey)
+    }
+
+    /** Пересобрать календари из сохранённых пар, без запроса к порталу (после смены настройки). */
+    fun resyncCalendars(context: Context) {
+        val store = Store(context)
+        for (s in store.saved()) if (s.toCalendar && store.hasCache(s.uid)) syncCalendar(context, s, store.lessons(s.uid))
     }
 
     /** Загружает оценки текущего семестра и сообщает о новых КРМ и изменениях баллов. */

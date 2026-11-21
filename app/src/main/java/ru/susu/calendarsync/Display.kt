@@ -30,6 +30,9 @@ object Bells {
 }
 
 /** Цвет полосы и метки по типу занятия — общий для ленты, сетки недели и виджета. */
+/** Консультация перед экзаменом или зачётом (по типу занятия с портала). */
+fun isConsultation(l: Lesson) = "консульт" in l.eventType.lowercase()
+
 fun lessonTypeColor(type: String): Int {
     val t = type.lowercase()
     return when {

@@ -211,7 +211,8 @@ class SchedulePage : Page() {
 
         display = Prefs(ctx).display
         // Свои неофициальные пары добавляются к расписанию, к которому их внесли.
-        val lessons = (if (isTemp) main.tempLessons else store.lessons(current.uid)) + MyLessons.lessons(ctx, current.uid)
+        val all = (if (isTemp) main.tempLessons else store.lessons(current.uid)) + MyLessons.lessons(ctx, current.uid)
+        val lessons = if (Prefs(ctx).hideConsultations) all.filterNot(::isConsultation) else all
         feedLessons = lessons
         plannerByLesson = Planner.byLesson(ctx)
         val today = Clock.today()
@@ -687,6 +688,7 @@ class SchedulePage : Page() {
         popup.menu.add(0, 5, 0, "Расписание звонков")
         popup.menu.add(0, 6, 0, if (Prefs(ctx).weekView) "Показать лентой" else "Показать по неделям")
         popup.menu.add(0, 8, 0, "＋ Своя пара…")
+        popup.menu.add(0, 9, 0, "Скрывать консультации").setCheckable(true).setChecked(Prefs(ctx).hideConsultations)
         if (isTemp) popup.menu.add(0, 2, 1, "★ Сохранить расписание")
         if (!isTemp && !current.own) popup.menu.add(0, 4, 2, "Удалить из сохранённых")
         popup.setOnMenuItemClickListener { item ->
@@ -694,6 +696,15 @@ class SchedulePage : Page() {
                 1 -> refresh(current, isTemp)
                 5 -> showBells()
                 8 -> PlannerSheet.showMyLesson(main, current.uid, null) { render() }
+                9 -> {
+                    val p = Prefs(ctx)
+                    p.hideConsultations = !p.hideConsultations
+                    val app = ctx.applicationContext
+                    runCatching { NowWidget.update(app) }
+                    // Календарь телефона тоже: пересобираем из сохранённых пар, портал не трогаем.
+                    background({ runCatching { Syncer.resyncCalendars(app) } }) {}
+                    render(fade = true)
+                }
                 6 -> {
                     val p = Prefs(ctx)
                     p.weekView = !p.weekView
