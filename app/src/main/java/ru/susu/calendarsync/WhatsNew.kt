@@ -26,6 +26,10 @@ object WhatsNew {
     private const val PINK = 0xFFD81B60.toInt()
 
     private val RELEASES = listOf(
+        Release("2.5.1", listOf(
+            Feature(R.drawable.ic_eye_off, SLATE, "Без консультаций",
+                "В меню ⋮ на ленте можно скрыть консультации. Они пропадут и из виджетов, и из календаря телефона."),
+        )),
         Release("2.5", listOf(
             Feature(R.drawable.ic_notif_final, PURPLE, "Красный диплом",
                 "В «Оценках» видно, получится ли красный диплом и сколько четвёрок ещё можно. Считаются все семестры, и будущие тоже."),
