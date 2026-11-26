@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Сгенерировано: шапка и до 6 строк пар; лишние строки скрываются, число строк зависит от высоты виджета. -->
+<!-- Шапка и до 6 строк пар. Если пары дня не влезают по высоте, строки становятся плотными (в одну линию). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -78,9 +78,11 @@
             android:visibility="gone" />
 
         <FrameLayout
+            android:id="@+id/s0_card"
+            android:paddingTop="5dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="5dp">
+            >
 
             <ImageView
                 android:id="@+id/s0_bg"
@@ -90,6 +92,7 @@
                 android:src="@drawable/widget_card" />
 
             <LinearLayout
+                android:id="@+id/s0_row"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
@@ -127,6 +130,15 @@
                     android:layout_marginRight="10dp"
                     android:scaleType="fitXY"
                     android:src="@drawable/widget_bar" />
+
+                <ImageView
+                    android:id="@+id/s0_bar2"
+                    android:layout_width="3dp"
+                    android:layout_height="16dp"
+                    android:layout_marginRight="10dp"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/widget_bar"
+                    android:visibility="gone" />
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -196,9 +208,11 @@
             android:visibility="gone" />
 
         <FrameLayout
+            android:id="@+id/s1_card"
+            android:paddingTop="5dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="5dp">
+            >
 
             <ImageView
                 android:id="@+id/s1_bg"
@@ -208,6 +222,7 @@
                 android:src="@drawable/widget_card" />
 
             <LinearLayout
+                android:id="@+id/s1_row"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
@@ -245,6 +260,15 @@
                     android:layout_marginRight="10dp"
                     android:scaleType="fitXY"
                     android:src="@drawable/widget_bar" />
+
+                <ImageView
+                    android:id="@+id/s1_bar2"
+                    android:layout_width="3dp"
+                    android:layout_height="16dp"
+                    android:layout_marginRight="10dp"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/widget_bar"
+                    android:visibility="gone" />
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -314,9 +338,11 @@
             android:visibility="gone" />
 
         <FrameLayout
+            android:id="@+id/s2_card"
+            android:paddingTop="5dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="5dp">
+            >
 
             <ImageView
                 android:id="@+id/s2_bg"
@@ -326,6 +352,7 @@
                 android:src="@drawable/widget_card" />
 
             <LinearLayout
+                android:id="@+id/s2_row"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
@@ -363,6 +390,15 @@
                     android:layout_marginRight="10dp"
                     android:scaleType="fitXY"
                     android:src="@drawable/widget_bar" />
+
+                <ImageView
+                    android:id="@+id/s2_bar2"
+                    android:layout_width="3dp"
+                    android:layout_height="16dp"
+                    android:layout_marginRight="10dp"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/widget_bar"
+                    android:visibility="gone" />
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -432,9 +468,11 @@
             android:visibility="gone" />
 
         <FrameLayout
+            android:id="@+id/s3_card"
+            android:paddingTop="5dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="5dp">
+            >
 
             <ImageView
                 android:id="@+id/s3_bg"
@@ -444,6 +482,7 @@
                 android:src="@drawable/widget_card" />
 
             <LinearLayout
+                android:id="@+id/s3_row"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
@@ -481,6 +520,15 @@
                     android:layout_marginRight="10dp"
                     android:scaleType="fitXY"
                     android:src="@drawable/widget_bar" />
+
+                <ImageView
+                    android:id="@+id/s3_bar2"
+                    android:layout_width="3dp"
+                    android:layout_height="16dp"
+                    android:layout_marginRight="10dp"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/widget_bar"
+                    android:visibility="gone" />
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -550,9 +598,11 @@
             android:visibility="gone" />
 
         <FrameLayout
+            android:id="@+id/s4_card"
+            android:paddingTop="5dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="5dp">
+            >
 
             <ImageView
                 android:id="@+id/s4_bg"
@@ -562,6 +612,7 @@
                 android:src="@drawable/widget_card" />
 
             <LinearLayout
+                android:id="@+id/s4_row"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
@@ -599,6 +650,15 @@
                     android:layout_marginRight="10dp"
                     android:scaleType="fitXY"
                     android:src="@drawable/widget_bar" />
+
+                <ImageView
+                    android:id="@+id/s4_bar2"
+                    android:layout_width="3dp"
+                    android:layout_height="16dp"
+                    android:layout_marginRight="10dp"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/widget_bar"
+                    android:visibility="gone" />
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -668,9 +728,11 @@
             android:visibility="gone" />
 
         <FrameLayout
+            android:id="@+id/s5_card"
+            android:paddingTop="5dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="5dp">
+            >
 
             <ImageView
                 android:id="@+id/s5_bg"
@@ -680,6 +742,7 @@
                 android:src="@drawable/widget_card" />
 
             <LinearLayout
+                android:id="@+id/s5_row"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
@@ -717,6 +780,15 @@
                     android:layout_marginRight="10dp"
                     android:scaleType="fitXY"
                     android:src="@drawable/widget_bar" />
+
+                <ImageView
+                    android:id="@+id/s5_bar2"
+                    android:layout_width="3dp"
+                    android:layout_height="16dp"
+                    android:layout_marginRight="10dp"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/widget_bar"
+                    android:visibility="gone" />
 
                 <LinearLayout
                     android:layout_width="0dp"

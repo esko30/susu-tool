@@ -28,14 +28,14 @@ class SubjectPage : Page() {
     private lateinit var summaryForecast: TextView
     private lateinit var summaryMark: TextView
     private lateinit var ring: RatingRing
+    /** Подпись под первым кольцом, когда колец два: «текущий» или «прогноз». */
+    private var ringCaption: android.widget.TextView? = null
     private lateinit var neededBox: LinearLayout
 
     override fun build(): View {
         val ctx = requireContext()
         val root = ctx.vertical(16)
-        root.addView(ctx.textButton(if (whatIf) "‹ Дисциплина" else "‹ Оценки") { parentFragmentManager.popBackStack() }.apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        })
+        root.addView(backButton(if (whatIf) "Дисциплина" else "Оценки"))
         val term = requireArguments().getInt("term")
         val key = requireArguments().getString("key").orEmpty()
         val s = GradesStore(ctx).load(term)?.subjects?.firstOrNull { it.key == key }
@@ -52,15 +52,35 @@ class SubjectPage : Page() {
         if (s.instructors.isNotBlank()) root.addView(ctx.secondary(s.instructors))
 
         // Итог: рейтинг сейчас, прогноз и оценка.
-        ring = RatingRing(ctx, ctx.dp(96)).apply {
-            this.credit = credit
-            layoutParams = LinearLayout.LayoutParams(ctx.dp(96), ctx.dp(96)).apply { setMargins(0, 0, ctx.dp(16), 0) }
+        val twoRings = s.ratingsDiffer
+        val ringBox: View
+        if (twoRings) {
+            // Текущий и итоговый рейтинг портала расходятся — два кольца поменьше.
+            val (box, r) = RatingRing.labeled(ctx, ctx.dp(76), null, credit, "текущий")
+            ring = r
+            ringCaption = (box as android.view.ViewGroup).getChildAt(1) as android.widget.TextView
+            ringBox = ctx.horizontal().apply {
+                addView(box)
+                addView(RatingRing.labeled(ctx, ctx.dp(76), s.totalRating, credit, "итоговый").first.apply {
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                        .apply { setMargins(ctx.dp(8), 0, 0, 0) }
+                })
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    .apply { setMargins(0, 0, ctx.dp(14), 0) }
+            }
+        } else {
+            ring = RatingRing(ctx, ctx.dp(96)).apply {
+                this.credit = credit
+                layoutParams = LinearLayout.LayoutParams(ctx.dp(96), ctx.dp(96)).apply { setMargins(0, 0, ctx.dp(16), 0) }
+            }
+            ringBox = ring
+            ringCaption = null
         }
         summaryNow = ctx.secondary("", 14f)
         summaryForecast = ctx.text("", 20f, bold = true)
         summaryMark = ctx.secondary("", 13f)
         val summary = ctx.horizontal()
-        summary.addView(ring)
+        summary.addView(ringBox)
         summary.gravity = android.view.Gravity.CENTER_VERTICAL
         summary.addView(ctx.vertical().apply {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -163,6 +183,7 @@ class SubjectPage : Page() {
         val exam = Forecast.examPercent(s, ov)
         val p = Forecast.projected(s, ov)
         ring.set(p, animate = true)
+        ringCaption?.text = if (ov.isEmpty()) "текущий" else "прогноз"
         val mark = Forecast.markFor(p, credit).substringBefore(" ·")
         val noPoints = ov.isEmpty() && s.events.none { it.point != null }
         summaryNow.text = "Сейчас ${r1(s.bestRating ?: 0.0)}%"

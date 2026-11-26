@@ -4,6 +4,4 @@
     <string name="widget_description">Ближайшие пары списком</string>
     <string name="shortcut_pass">Пропуск</string>
     <string name="shortcut_new_entry">Новая запись</string>
-    <string name="widget_timer_description">Сколько осталось до конца пары или до следующей</string>
-    <string name="widget_compact_description">Одна строка, что сейчас или что дальше</string>
 </resources>

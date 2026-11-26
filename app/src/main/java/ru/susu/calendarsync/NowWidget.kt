@@ -28,35 +28,52 @@ class NowWidget : AppWidgetProvider() {
         private val ru = Locale("ru")
 
         private class Slot(val root: Int, val day: Int, val bg: Int, val begin: Int, val end: Int, val bar: Int,
-                           val subject: Int, val room: Int, val badge: Int)
+                           val subject: Int, val room: Int, val badge: Int, val card: Int, val row: Int, val bar2: Int)
+
+        /** Высота обычной строки пары и плотной (в одну линию), dp; шапка и отступы виджета. */
+        private const val ROW_DP = 58
+        private const val DENSE_ROW_DP = 26
+        private const val CHROME_DP = 60
 
         private val SLOTS = listOf(
-            Slot(R.id.s0, R.id.s0_day, R.id.s0_bg, R.id.s0_begin, R.id.s0_end, R.id.s0_bar, R.id.s0_subject, R.id.s0_room, R.id.s0_badge),
-            Slot(R.id.s1, R.id.s1_day, R.id.s1_bg, R.id.s1_begin, R.id.s1_end, R.id.s1_bar, R.id.s1_subject, R.id.s1_room, R.id.s1_badge),
-            Slot(R.id.s2, R.id.s2_day, R.id.s2_bg, R.id.s2_begin, R.id.s2_end, R.id.s2_bar, R.id.s2_subject, R.id.s2_room, R.id.s2_badge),
-            Slot(R.id.s3, R.id.s3_day, R.id.s3_bg, R.id.s3_begin, R.id.s3_end, R.id.s3_bar, R.id.s3_subject, R.id.s3_room, R.id.s3_badge),
-            Slot(R.id.s4, R.id.s4_day, R.id.s4_bg, R.id.s4_begin, R.id.s4_end, R.id.s4_bar, R.id.s4_subject, R.id.s4_room, R.id.s4_badge),
-            Slot(R.id.s5, R.id.s5_day, R.id.s5_bg, R.id.s5_begin, R.id.s5_end, R.id.s5_bar, R.id.s5_subject, R.id.s5_room, R.id.s5_badge),
+            Slot(R.id.s0, R.id.s0_day, R.id.s0_bg, R.id.s0_begin, R.id.s0_end, R.id.s0_bar, R.id.s0_subject, R.id.s0_room, R.id.s0_badge,
+                R.id.s0_card, R.id.s0_row, R.id.s0_bar2),
+            Slot(R.id.s1, R.id.s1_day, R.id.s1_bg, R.id.s1_begin, R.id.s1_end, R.id.s1_bar, R.id.s1_subject, R.id.s1_room, R.id.s1_badge,
+                R.id.s1_card, R.id.s1_row, R.id.s1_bar2),
+            Slot(R.id.s2, R.id.s2_day, R.id.s2_bg, R.id.s2_begin, R.id.s2_end, R.id.s2_bar, R.id.s2_subject, R.id.s2_room, R.id.s2_badge,
+                R.id.s2_card, R.id.s2_row, R.id.s2_bar2),
+            Slot(R.id.s3, R.id.s3_day, R.id.s3_bg, R.id.s3_begin, R.id.s3_end, R.id.s3_bar, R.id.s3_subject, R.id.s3_room, R.id.s3_badge,
+                R.id.s3_card, R.id.s3_row, R.id.s3_bar2),
+            Slot(R.id.s4, R.id.s4_day, R.id.s4_bg, R.id.s4_begin, R.id.s4_end, R.id.s4_bar, R.id.s4_subject, R.id.s4_room, R.id.s4_badge,
+                R.id.s4_card, R.id.s4_row, R.id.s4_bar2),
+            Slot(R.id.s5, R.id.s5_day, R.id.s5_bg, R.id.s5_begin, R.id.s5_end, R.id.s5_bar, R.id.s5_subject, R.id.s5_room, R.id.s5_badge,
+                R.id.s5_card, R.id.s5_row, R.id.s5_bar2),
         )
 
         /** Перерисовать все виджеты (если они есть на экране). */
         fun update(context: Context) {
             val mgr = AppWidgetManager.getInstance(context)
             mgr.getAppWidgetIds(ComponentName(context, NowWidget::class.java)).forEach { draw(context, mgr, it) }
-            // Маленькие виджеты (таймер, строка под часы) обновляются вместе с основным.
-            PairTimerWidget.updateAll(context)
-            NextPairWidget.updateAll(context)
         }
 
         private fun draw(context: Context, mgr: AppWidgetManager, id: Int) =
-            mgr.updateAppWidget(id, render(context, capacity(mgr.getAppWidgetOptions(id))))
+            mgr.updateAppWidget(id, render(context, heightDp(mgr.getAppWidgetOptions(id))))
 
-        /** Сколько строк пар влезает: по высоте виджета (в портрете — максимальная высота). */
-        private fun capacity(options: Bundle?): Int {
-            val h = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)?.takeIf { it > 0 }
+        /** Высота виджета в dp (в портрете — максимальная); неизвестна — как у виджета 4×3. */
+        private fun heightDp(options: Bundle?): Int =
+            options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)?.takeIf { it > 0 }
                 ?: options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT)?.takeIf { it > 0 }
-                ?: return 3
-            return ((h - 64) / 58).coerceIn(1, SLOTS.size)
+                ?: 240
+
+        /**
+         * Сколько строк показать и плотные ли они. Все пары ближайшего дня должны поместиться:
+         * если обычные строки не влезают, строки становятся плотными (в одну линию) и показывают ровно этот день.
+         */
+        internal fun layoutFor(heightDp: Int, dayCount: Int): Pair<Int, Boolean> {
+            val normal = ((heightDp - CHROME_DP) / ROW_DP).coerceIn(1, SLOTS.size)
+            if (dayCount <= normal) return normal to false
+            val dense = ((heightDp - CHROME_DP) / DENSE_ROW_DP).coerceIn(1, SLOTS.size)
+            return minOf(dense, dayCount) to true
         }
 
         internal fun lessons(context: Context): List<Lesson> {
@@ -82,13 +99,15 @@ class NowWidget : AppWidgetProvider() {
             }
         }.getOrDefault(date)
 
-        private fun render(context: Context, capacity: Int): RemoteViews {
+        private fun render(context: Context, heightDp: Int): RemoteViews {
             val v = RemoteViews(context.packageName, R.layout.widget_now)
             val prefs = Prefs(context)
             val now = Clock.now()
             val today = now.toLocalDate()
             val all = lessons(context)
             val list = Timeline.upcoming(all, now)
+            val dayCount = list.takeWhile { it.date == list.first().date }.size.takeIf { list.isNotEmpty() } ?: 0
+            val (capacity, dense) = layoutFor(heightDp, dayCount)
             val shown = list.take(capacity)
             val first = shown.firstOrNull()
             val current = shown.filter { !now.isBefore(start(it)) }.toSet()
@@ -128,14 +147,26 @@ class NowWidget : AppWidgetProvider() {
 
                 val accent = lessonTypeColor(l.eventType)
                 val live = l in current
+                // Плотная строка: время, предмет и аудитория в одну линию, короткая полоска, меньше отступы.
+                val dp = context.resources.displayMetrics.density
+                fun px(d: Int) = (d * dp).toInt()
+                v.setViewPadding(slot.card, 0, px(if (dense) 2 else 5), 0, 0)
+                v.setViewPadding(slot.row, px(10), px(if (dense) 3 else 7), px(10), px(if (dense) 3 else 7))
+                v.setViewVisibility(slot.bar, if (dense) View.GONE else View.VISIBLE)
+                v.setViewVisibility(slot.bar2, if (dense) View.VISIBLE else View.GONE)
+                v.setViewVisibility(slot.end, if (dense) View.GONE else View.VISIBLE)
+                v.setViewVisibility(slot.room, if (dense) View.GONE else View.VISIBLE)
+                v.setTextViewTextSize(slot.begin, android.util.TypedValue.COMPLEX_UNIT_SP, if (dense) 13f else 15f)
+                v.setTextViewTextSize(slot.subject, android.util.TypedValue.COMPLEX_UNIT_SP, if (dense) 13f else 14f)
+                v.setInt(slot.bar2, "setColorFilter", accent)
                 v.setInt(slot.bg, "setColorFilter", accent)
                 v.setInt(slot.bg, "setImageAlpha", if (live) 72 else 30)
                 v.setInt(slot.bar, "setColorFilter", accent)
                 v.setTextViewText(slot.begin, l.beginTime)
                 v.setTextViewText(slot.end, l.endTime)
-                v.setTextViewText(slot.subject, l.subject)
                 val tag = DisplayOptions.typeTag(l.eventType)
                 val room = l.location.substringBefore(";").trim()
+                v.setTextViewText(slot.subject, if (dense && room.isNotBlank()) "${l.subject} · $room" else l.subject)
                 v.setTextViewText(slot.room, listOf(room, tag).filter { it.isNotBlank() }.joinToString("  ·  "))
                 v.setTextColor(slot.room, accent)
                 v.setViewVisibility(slot.badge, if (live) View.VISIBLE else View.GONE)

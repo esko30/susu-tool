@@ -41,7 +41,7 @@ object MyLessons {
         val a = JSONArray()
         items.forEach { a.put(JSONObject().put("id", it.id).put("uid", it.uid).put("d", it.date).put("b", it.begin)
             .put("e", it.end).put("s", it.subject).put("l", it.location).put("n", it.note)) }
-        file(c).writeText(a.toString())
+        file(c).writeAtomic(a.toString())
     }
 
     fun save(c: Context, item: Item) { write(c, all(c).filter { it.id != item.id } + item); runCatching { NowWidget.update(c) } }

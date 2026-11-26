@@ -39,11 +39,7 @@ class SettingsPage : Page() {
     private fun subPage(title: String, fill: (android.widget.LinearLayout) -> Unit): View {
         val ctx = requireContext()
         val root = ctx.vertical(16)
-        root.addView(ctx.textButton("‹ Настройки") { parentFragmentManager.popBackStack() }.apply {
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-        })
+        root.addView(backButton("Настройки"))
         root.addView(ctx.title(title))
         fill(root)
         return ctx.scroll(root)
@@ -120,7 +116,7 @@ class SettingsPage : Page() {
         if (prefs.syncIntervalHours > 0) {
             val last = prefs.lastBackgroundCheck
             root.addView(ctx.secondary(if (last == 0L) "В фоне ещё ни разу не проверял"
-                else "Последний раз проверял " + java.text.SimpleDateFormat("d MMMM, HH:mm", java.util.Locale("ru")).format(java.util.Date(last))))
+                else "Последний раз проверял " + Fmt.dayTime(last)))
             batteryWarning(root)
         }
         root.addView(ctx.secondary("Ищу переносы и отмены пар, новые КРМ, баллы и оценки. Переносы ищу в расписаниях, где включено «Следить за изменениями»."))
@@ -143,9 +139,6 @@ class SettingsPage : Page() {
         }
         soundPicker("Звук переносов и отмен", prefs.soundSchedule) { prefs.soundSchedule = it }
         soundPicker("Звук итоговых оценок", prefs.soundGrades) { prefs.soundGrades = it }
-        root.addView(ctx.textButton("Показать, как выглядят уведомления") {
-            Notifier.notifyGrades(ctx.applicationContext, prefs.currentTerm, GradeNews.sample())
-        })
 
             }
             SECTION_ABOUT -> return subPage("О приложении") { root ->

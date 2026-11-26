@@ -61,7 +61,7 @@ class Store(context: Context) {
     private fun write(list: List<SavedSchedule>) {
         val arr = JSONArray()
         list.forEach { arr.put(it.toJson()) }
-        listFile.writeText(arr.toString())
+        listFile.writeAtomic(arr.toString())
     }
 
     fun find(uid: String) = saved().firstOrNull { it.uid == uid }
@@ -118,7 +118,7 @@ class Store(context: Context) {
     private fun saveLessonsOnly(uid: String, lessons: List<Lesson>) {
         val arr = JSONArray()
         lessons.forEach { arr.put(it.toJson()) }
-        cacheFile(uid).writeText(arr.toString())
+        cacheFile(uid).writeAtomic(arr.toString())
     }
 
     fun clearAll() {

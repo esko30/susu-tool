@@ -68,10 +68,6 @@ class Prefs(context: Context) {
         get() = sp.getLong("customTo", 0)
         set(v) = sp.edit { putLong("customTo", v) }
 
-    var monitorGrades: Boolean
-        get() = true // единый мониторинг: оценки проверяются вместе с расписанием
-        set(v) = sp.edit { putBoolean("monitorGrades", v) }
-
     /** Текущий семестр по учебному плану; 0 — ещё не загружали. */
     var currentTerm: Int
         get() = sp.getInt("currentTerm", 0)
@@ -166,22 +162,23 @@ class Prefs(context: Context) {
         set(v) = sp.edit { putString("avatarMode", v) }
 
     /** Шрифт: false — «Эффективный» (Noto Sans), true — «Обычный», как в телефоне. */
-    var systemFont: Boolean
-        get() = sp.getBoolean("systemFont", false)
-        set(v) = sp.edit { putBoolean("systemFont", v) }
+    /** Тема приложения: шрифт Noto Sans. */
+    val themeRes: Int get() = R.style.Theme_SusuCalendar
 
-    /** Тема приложения с выбранным шрифтом — для активности и полноэкранных окон. */
-    val themeRes: Int get() = when {
-        systemFont && tightLines -> R.style.Theme_SusuCalendar_SystemFont_Tight
-        systemFont -> R.style.Theme_SusuCalendar_SystemFont
-        tightLines -> R.style.Theme_SusuCalendar_Tight
-        else -> R.style.Theme_SusuCalendar
-    }
+    /** За сколько минут до первой пары будить (будильники на неделю). */
+    var wakeLead: Int
+        get() = sp.getInt("wakeLead", 90)
+        set(v) = sp.edit { putInt("wakeLead", v) }
 
-    /** Межстрочный интервал: false — обычный, true — компактный. */
-    var tightLines: Boolean
-        get() = sp.getBoolean("tightLines", false)
-        set(v) = sp.edit { putBoolean("tightLines", v) }
+    /** Новогоднее оформление (снег, гирлянда, ледяная корочка). Пока не трогали — включено с 1 декабря по 14 января. */
+    var snow: Boolean
+        get() = if (sp.contains("snow")) sp.getBoolean("snow", false) else SnowView.season(Clock.today())
+        set(v) = sp.edit { putBoolean("snow", v) }
+
+    /** Новогоднее оформление уже включали принудительно после обновления (один раз за зиму). */
+    var holidayForced: Int
+        get() = sp.getInt("holidayForced", 0)
+        set(v) = sp.edit { putInt("holidayForced", v) }
 
     /** Не показывать консультации в ленте, сетке недели и виджетах. */
     var hideConsultations: Boolean
@@ -233,39 +230,17 @@ class Prefs(context: Context) {
 
     var display: DisplayOptions
         get() = DisplayOptions(
-            pairNumber = sp.getBoolean("d_pair2", false),
             shortTypes = sp.getBoolean("d_short", true),
-            bigRoom = sp.getBoolean("d_room", true),
             teacher = sp.getBoolean("d_teacher", true),
             groups = sp.getBoolean("d_groups", true),
-            progress = sp.getBoolean("d_progress", true),
-            countdown = sp.getBoolean("d_countdown", true),
-            hidePast = sp.getBoolean("d_hidePast", false),
-            glow = sp.getBoolean("d_glow", true),
             typeTag = sp.getBoolean("d_tag", true),
-            gradient = sp.getBoolean("d_gradient", true),
-            compact = sp.getBoolean("d_compact", false),
-            windows = sp.getBoolean("d_windows", true),
-            collapsePast = sp.getBoolean("d_collapsePast", true),
-            mini = sp.getBoolean("d_mini", false),
             theme = sp.getInt("d_theme", 0),
         )
         set(v) = sp.edit {
-            putBoolean("d_pair2", v.pairNumber)
             putBoolean("d_short", v.shortTypes)
-            putBoolean("d_room", v.bigRoom)
             putBoolean("d_teacher", v.teacher)
             putBoolean("d_groups", v.groups)
-            putBoolean("d_progress", v.progress)
-            putBoolean("d_countdown", v.countdown)
-            putBoolean("d_hidePast", v.hidePast)
-            putBoolean("d_glow", v.glow)
             putBoolean("d_tag", v.typeTag)
-            putBoolean("d_gradient", v.gradient)
-            putBoolean("d_compact", v.compact)
-            putBoolean("d_windows", v.windows)
-            putBoolean("d_collapsePast", v.collapsePast)
-            putBoolean("d_mini", v.mini)
             putInt("d_theme", v.theme)
         }
 

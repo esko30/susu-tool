@@ -35,7 +35,6 @@ object Diploma {
         val graded get() = fives + fours + threes
         val total get() = graded + pending
         val possible get() = threes == 0 && foursLeft >= 0
-        val foursShare get() = if (graded == 0) 0.0 else fours * 100.0 / graded
     }
 
     /**
@@ -113,7 +112,7 @@ object Diploma {
     private fun save(c: Context, recs: List<Rec>) {
         val a = JSONArray()
         recs.forEach { r -> a.put(JSONObject().put("n", r.name).put("k", r.kind.name).put("t", r.term).apply { r.mark?.let { put("m", it) } }) }
-        file(c).writeText(a.toString())
+        file(c).writeAtomic(a.toString())
     }
 
     fun clear(c: Context) { file(c).delete() }

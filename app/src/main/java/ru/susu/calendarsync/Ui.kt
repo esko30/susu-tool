@@ -126,6 +126,9 @@ fun Context.surfaceCard(content: View, onClick: (() -> Unit)? = null) = Material
     layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         .apply { setMargins(0, dp(5), 0, dp(5)) }
     onClick?.let { setOnClickListener { it() } }
+    // Новогоднее оформление: иней и морозные узоры поверх содержимого.
+    if (SnowView.decorated) addView(Frost(context, radius), android.widget.FrameLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 }
 
 fun Context.card(vararg children: View, onClick: (() -> Unit)? = null): MaterialCardView {

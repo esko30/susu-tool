@@ -154,7 +154,7 @@ class ChangeLog(context: Context) {
             }
             arr.put(JSONObject().put("ts", s.timestamp).put("src", s.source).put("changes", ch))
         }
-        file.writeText(arr.toString())
+        file.writeAtomic(arr.toString())
     }
 
     @Synchronized

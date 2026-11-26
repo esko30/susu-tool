@@ -37,6 +37,10 @@ data class SubjectGrades(
     val key get() = "$disciplineId|$checkNumber|$controlTypeId"
     val controlLabel get() = controlType.ifBlank { Grades.CONTROL_TYPES[controlTypeId] ?: "Дисциплина" }
     val bestRating get() = totalRating ?: rating
+
+    /** Портал отдал и текущий, и итоговый рейтинг, и они разные (до сотых) — показываем оба. */
+    val ratingsDiffer get() = currentRating != null && totalRating != null &&
+        Math.round(currentRating * 100) != Math.round(totalRating * 100)
 }
 
 data class GradesSnapshot(val term: Int, val termCount: Int, val updated: Long, val subjects: List<SubjectGrades>)
@@ -51,8 +55,10 @@ object Grades {
         "d8c42892-e377-5376-f238-0dbdac65541b" to "Практика",
     )
     private val COURSE_WORK = setOf("96da8807-2b8b-b170-971f-430b9a19dd8a", "5058be9b-5bef-8e6e-07fb-acd318c1a6ce")
+    const val CURRENT_CONTROL = "Текущий контроль"
+
     private val CATEGORIES = linkedMapOf(
-        "currentControl" to "Текущий контроль",
+        "currentControl" to CURRENT_CONTROL,
         "labs" to "Лабораторные",
         "bonuses" to "Бонусы",
         "attestation" to "Аттестация",
@@ -143,6 +149,25 @@ object Grades {
             )
         }.sortedBy { it.name }
         return GradesSnapshot(term, termCount, System.currentTimeMillis(), subjects)
+    }
+
+    /**
+     * Портал иногда не отдаёт журнал предмета или ведомость (такие запросы не обрывают проверку).
+     * Тогда оставляем прошлые КРМ, рейтинг и оценку: иначе при следующей удачной проверке всё
+     * «появится заново» и придут лишние уведомления о новых КРМ и оценках.
+     */
+    fun carryOver(old: GradesSnapshot?, new: GradesSnapshot): GradesSnapshot {
+        if (old == null || old.term != new.term) return new
+        val prev = old.subjects.associateBy { it.key }
+        return new.copy(subjects = new.subjects.map { s ->
+            val o = prev[s.key] ?: return@map s
+            var r = s
+            val journalMissing = s.events.isEmpty() && s.currentRating == null && s.totalRating == null
+            if (journalMissing && o.events.isNotEmpty())
+                r = r.copy(events = o.events, currentRating = o.currentRating, totalRating = o.totalRating)
+            if (s.mark.isBlank() && o.mark.isNotBlank()) r = r.copy(mark = o.mark)
+            r
+        })
     }
 
     private fun mergeJson(a: JSONObject, b: JSONObject): JSONObject {
@@ -239,7 +264,7 @@ class GradesStore(context: Context) {
                 .putOpt("rating", g.rating).put("ins", g.instructors).put("date", g.date)
                 .putOpt("cur", g.currentRating).putOpt("total", g.totalRating).put("events", ev))
         }
-        file(s.term).writeText(
+        file(s.term).writeAtomic(
             JSONObject().put("term", s.term).put("termCount", s.termCount).put("updated", s.updated)
                 .put("subjects", arr).toString()
         )

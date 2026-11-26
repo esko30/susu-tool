@@ -147,7 +147,7 @@ object Planner {
     private fun write(context: Context, items: List<PlannerItem>) {
         val arr = JSONArray()
         items.forEach { arr.put(it.toJson()) }
-        file(context).writeText(arr.toString())
+        file(context).writeAtomic(arr.toString())
     }
 
     /** Записи по ключу пары — для меток на карточках. */

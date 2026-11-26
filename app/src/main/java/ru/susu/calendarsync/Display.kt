@@ -30,6 +30,9 @@ object Bells {
 }
 
 /** Цвет полосы и метки по типу занятия — общий для ленты, сетки недели и виджета. */
+/** Значение строки описания пары: «Группы: ПЛ-301» → «ПЛ-301». */
+fun detailValue(line: String) = line.substringAfter(": ", line)
+
 /** Консультация перед экзаменом или зачётом (по типу занятия с портала). */
 fun isConsultation(l: Lesson) = "консульт" in l.eventType.lowercase()
 
@@ -47,24 +50,12 @@ fun lessonTypeColor(type: String): Int {
 
 /** Настройки отображения расписания. */
 data class DisplayOptions(
-    val pairNumber: Boolean,
-    val shortTypes: Boolean,
-    val bigRoom: Boolean,
-    val teacher: Boolean,
-    val groups: Boolean,
-    val progress: Boolean,
-    val countdown: Boolean,
-    val hidePast: Boolean,
-    val glow: Boolean = true,
+    /** «Практики» вместо «Практические занятия и семинары». */
+    val shortTypes: Boolean = true,
+    val teacher: Boolean = true,
+    val groups: Boolean = true,
+    /** Лейбл типа в углу карточки: ЛЕК, СЕМ… */
     val typeTag: Boolean = true,
-    val gradient: Boolean = true,
-    val compact: Boolean = false,
-    /** Карточки «Мини»: название в две строки, короткое ФИО. Отдельно от «Компактных» (те только уменьшают отступы). */
-    val mini: Boolean = false,
-    /** Прошедшие пары сегодняшнего дня свёрнуты в одну строку «2 пары прошли». */
-    val collapsePast: Boolean = true,
-    /** Плашка «Окно 1 ч 40 мин» между парами. */
-    val windows: Boolean = true,
     /** 0 — как в системе, 1 — светлая, 2 — тёмная. */
     val theme: Int = 0,
 ) {

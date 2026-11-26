@@ -41,6 +41,10 @@ class GlowProgress(context: Context, private val barColor: Int, private val trac
         maskFilter = BlurMaskFilter(glowRadius, BlurMaskFilter.Blur.NORMAL)
     }
     private val wavePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val waveMatrix = android.graphics.Matrix()
+    private var waveShader: LinearGradient? = null
+    private var waveLen = 0f
+    private var waveColor = 0
     private val headPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = ColorUtils.blendARGB(barColor, Color.WHITE, 0.6f)
         maskFilter = BlurMaskFilter(glowRadius * 0.8f, BlurMaskFilter.Blur.NORMAL)
@@ -103,12 +107,20 @@ class GlowProgress(context: Context, private val barColor: Int, private val trac
         // Световая волна слева направо по заполненной части.
         val len = maxOf(fillEnd * 0.35f, thickness * 4)
         val center = -len + phase * (fillEnd + 2 * len)
-        val light = ColorUtils.blendARGB(barColor, Color.WHITE, 0.7f)
-        wavePaint.shader = LinearGradient(
-            center - len, 0f, center + len, 0f,
-            intArrayOf(Color.TRANSPARENT, light, Color.TRANSPARENT), floatArrayOf(0f, 0.5f, 1f),
-            Shader.TileMode.CLAMP,
-        )
+        // Градиент создаётся заново, только если поменялась его длина или цвет; каждый кадр он лишь сдвигается.
+        if (waveShader == null || waveLen != len || waveColor != barColor) {
+            val light = ColorUtils.blendARGB(barColor, Color.WHITE, 0.7f)
+            waveShader = LinearGradient(
+                -len, 0f, len, 0f,
+                intArrayOf(Color.TRANSPARENT, light, Color.TRANSPARENT), floatArrayOf(0f, 0.5f, 1f),
+                Shader.TileMode.CLAMP,
+            )
+            waveLen = len
+            waveColor = barColor
+            wavePaint.shader = waveShader
+        }
+        waveMatrix.setTranslate(center, 0f)
+        waveShader?.setLocalMatrix(waveMatrix)
         canvas.drawRoundRect(rect, r, r, wavePaint)
 
         // Светящийся край — «где мы сейчас».

@@ -82,6 +82,12 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState == null) greetPending = true
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
+        // После обновления новогоднее оформление включается само, один раз за зиму; выключить можно во «Внешнем виде».
+        Prefs(this).let { p ->
+            val winter = SnowView.winter(Clock.today())
+            if (p.holidayForced != winter) { p.snow = true; p.holidayForced = winter }
+        }
+        SnowView.apply(this)
         Notifier.ensureChannels(this)
         // Пока открыта клавиатура, нижняя панель вкладок не нужна и только отнимает место.
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(b.root) { v, insets ->
@@ -127,7 +133,6 @@ class MainActivity : AppCompatActivity() {
         Updater.autoCheck(this, lifecycleScope, Updater.RESUME_CHECK_MS)
     }
 
-    fun openPass() = showTab(Syncer.TAB_PASS)
 
     /** Тур по приложению: открываем расписание и по очереди подсвечиваем его элементы и вкладки. */
     fun startTour() {
@@ -217,7 +222,6 @@ class MainActivity : AppCompatActivity() {
         val key = intent.getStringExtra(Notifier.EXTRA_SUBJECT) ?: return
         val term = intent.getIntExtra(Notifier.EXTRA_TERM, 0)
         intent.removeExtra(Notifier.EXTRA_SUBJECT)
-        if (key.startsWith("sample-")) return // пример из настроек: такого предмета нет
         b.root.post { openSubject(term, key) }
     }
 
@@ -287,6 +291,11 @@ abstract class Page : Fragment() {
 
     abstract fun build(): View
 
+    /** «‹ Оценки», «‹ Настройки»: возврат на предыдущий экран. */
+    protected fun backButton(label: String): View = requireContext().textButton("‹ $label") { parentFragmentManager.popBackStack() }.apply {
+        layoutParams = android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+    }
+
     override fun onCreateView(inflater: android.view.LayoutInflater, container: ViewGroup?, s: Bundle?): View =
         FrameLayout(requireContext()).also { root = it; createdAt = android.os.SystemClock.uptimeMillis(); it.addView(build()) }
 
@@ -333,9 +342,11 @@ abstract class Page : Fragment() {
         }
     }
 
-    protected fun errorText(e: Throwable) = when (e) {
-        is AuthException -> e.message ?: "Не получилось войти"
-        is java.net.UnknownHostException -> "Нет интернета"
-        else -> e.message?.let { "Не получилось. $it" } ?: "Что-то пошло не так"
-    }
+}
+
+/** Понятный текст ошибки для экрана. */
+fun errorText(e: Throwable) = when (e) {
+    is AuthException -> e.message ?: "Не получилось войти"
+    is java.net.UnknownHostException -> "Нет интернета"
+    else -> e.message?.let { "Не получилось. $it" } ?: "Что-то пошло не так"
 }

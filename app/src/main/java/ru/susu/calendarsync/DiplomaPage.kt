@@ -14,9 +14,7 @@ class DiplomaPage : Page() {
         val ctx = requireContext()
         val prefs = Prefs(ctx)
         val root = ctx.vertical(16)
-        root.addView(ctx.textButton("‹ Оценки") { parentFragmentManager.popBackStack() }.apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        })
+        root.addView(backButton("Оценки"))
         root.addView(ctx.title("Красный диплом"))
 
         val recs = Diploma.load(ctx)

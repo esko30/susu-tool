@@ -60,8 +60,7 @@ object DutySheet {
             val on = Duty.active(ctx)
             val blocked = !on && Battery.restricted(ctx)
             val h = slider.value.toInt()
-            title.text = if (on) "Дежурный до " + java.text.SimpleDateFormat("HH:mm", java.util.Locale("ru"))
-                .format(java.util.Date(prefs.ultraUntil)) else "Дежурный"
+            title.text = if (on) "Дежурный до " + Fmt.time(prefs.ultraUntil) else "Дежурный"
             hoursLabel.text = "Дежурить " + Remind.plural(h, "час", "часа", "часов")
             button.text = if (on) "Выключить" else "Включить на " + Remind.plural(h, "час", "часа", "часов")
             button.isEnabled = !blocked
@@ -85,7 +84,7 @@ object DutySheet {
             addView(ctx.secondary("Чтобы проверки шли ровно каждые 5 минут и во сне, разрешите точные будильники.", 13f)
                 .apply { setPadding(0, ctx.dp(12), 0, 0) })
             addView(ctx.textButton("Разрешить точные будильники") {
-                runCatching {
+                if (android.os.Build.VERSION.SDK_INT >= 31) runCatching {
                     ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
                         .setData(android.net.Uri.parse("package:${ctx.packageName}")))
                 }

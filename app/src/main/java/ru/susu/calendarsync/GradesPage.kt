@@ -53,7 +53,7 @@ class GradesPage : Page() {
         root.addView(ctx.button(if (loading) "Загрузка…" else "Обновить") { refresh() }.apply { isEnabled = !loading })
 
         snapshot?.updated?.takeIf { it > 0 }?.let {
-            root.addView(ctx.secondary("Обновлено " + SimpleDateFormat("d MMMM, HH:mm", Locale("ru")).format(Date(it))))
+            root.addView(ctx.secondary("Обновлено " + Fmt.dayTime(it)))
         }
         if (status.isNotBlank()) root.addView(ctx.secondary(status).apply { setPadding(0, ctx.dp(6), 0, 0) })
 
@@ -123,13 +123,24 @@ class GradesPage : Page() {
             info.addView(ctx.chip("Оценка ${Grades.markText(s.mark)}", ctx.ratingColor(s.mark.toDoubleOrNull()?.let { it * 20 })))
         }
         if (s.instructors.isNotBlank()) info.addView(ctx.secondary(s.instructors).apply { setPadding(0, ctx.dp(4), 0, 0) })
-        val scored = s.events.count { (it.point ?: 0.0) > 0 }
-        if (s.events.isNotEmpty()) info.addView(ctx.secondary("Баллы стоят за $scored КРМ из ${s.events.size}", 13f).apply {
+        // Счётчик только по текущему контролю: аттестация и бонусы в него не входят.
+        val current = s.events.filter { it.category == Grades.CURRENT_CONTROL }
+        val scored = current.count { (it.point ?: 0.0) > 0 }
+        if (current.isNotEmpty()) info.addView(ctx.secondary("Баллы стоят за $scored КРМ из ${current.size}", 13f).apply {
             setPadding(0, ctx.dp(4), 0, 0)
         })
         val head = ctx.horizontal()
         head.addView(info)
-        head.addView(ring(if (s.events.isNotEmpty()) Forecast.projected(s, emptyMap()) else s.bestRating, Forecast.isCredit(s)))
+        val credit = Forecast.isCredit(s)
+        if (s.ratingsDiffer) {
+            // Текущий и итоговый рейтинг портала расходятся — оба кольца рядом.
+            for ((r, caption) in listOf(s.currentRating to "текущий", s.totalRating to "итоговый")) {
+                head.addView(RatingRing.labeled(ctx, ctx.dp(60), r, credit, caption).first.apply {
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                        .apply { setMargins(ctx.dp(10), 0, 0, 0) }
+                })
+            }
+        } else head.addView(ring(if (s.events.isNotEmpty()) Forecast.projected(s, emptyMap()) else s.bestRating, credit))
         return ctx.card(head) { main.openSubject(termNo, s.key) }
     }
 

@@ -82,19 +82,6 @@ sealed class GradeNews {
             return if (cut != null) words.take(cut).joinToString(" ") else s
         }
 
-        /** Пример для кнопки в настройках: по одному уведомлению каждого вида. */
-        fun sample(): List<GradeNews> {
-            fun s(name: String, mark: String = "", control: String = "Экзамен") =
-                SubjectGrades("sample-$name", name, 0, "", "", control, mark, null, "", "", null, null, emptyList())
-            return listOf(
-                Final(s("Психосоматика", "5")),
-                Points(s("Теории личности в клинической психологии"), "Тест 3", 7.0, 10.0),
-                Points(s("Психосоматика"), "Реферат", 5.0, 5.0),
-                Down(s("Методы диагностики"), "Тест 2", 8.0, 5.0),
-                NewKrm(s("Психология личности: норма и патология"), "Контрольная работа 2"),
-            )
-        }
-
         private val PREPOSITIONS = setOf("в", "во", "на", "для", "при", "по", "под", "и", "с", "со", "о", "об")
     }
 }

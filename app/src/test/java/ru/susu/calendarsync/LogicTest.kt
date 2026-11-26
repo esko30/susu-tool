@@ -325,6 +325,86 @@ class TimelineTest {
     }
 }
 
+class SafeguardTest {
+    private fun subj(name: String, mark: String, cur: Double?, vararg ev: PointEvent) =
+        SubjectGrades("d-$name", name, 7, "1", "", "Экзамен", mark, null, "", "", cur, null, ev.toList())
+    private fun ev(name: String, p: Double?) = PointEvent("Текущий контроль", name, p, 10.0, null, "")
+    private fun snap(vararg s: SubjectGrades) = GradesSnapshot(7, 11, 0, s.toList())
+
+    @Test fun journalFailureKeepsOldDataAndSendsNothing() {
+        val old = snap(subj("Психосоматика", "5", 41.5, ev("Тест 1", 8.0), ev("Тест 2", null)))
+        // Журнал не загрузился, ведомость тоже: КРМ и оценки нет.
+        val broken = snap(subj("Психосоматика", "", null))
+        val kept = Grades.carryOver(old, broken)
+        assertEquals(old.subjects, kept.subjects)
+        assertTrue(GradeNews.of(old, kept).isEmpty())
+    }
+
+    @Test fun realChangesPassThrough() {
+        val old = snap(subj("Психосоматика", "", 41.5, ev("Тест 1", 8.0)))
+        val new = snap(subj("Психосоматика", "4", 44.0, ev("Тест 1", 9.0)))
+        assertEquals(new.subjects, Grades.carryOver(old, new).subjects)
+    }
+
+    @Test fun emptyScheduleWithFuturePairsIsBroken() {
+        val future = Lesson("Психосоматика", "Лекция", "2026-12-01", "10:00", "11:35", "624/3", "")
+        val past = future.copy(date = "2026-10-01")
+        assertTrue(Syncer.looksBroken(listOf(future), emptyList(), "2026-11-26"))
+        assertFalse(Syncer.looksBroken(listOf(past), emptyList(), "2026-11-26"))
+        assertFalse(Syncer.looksBroken(listOf(future), listOf(future), "2026-11-26"))
+    }
+}
+
+class WakeAlarmsTest {
+    private fun l(date: String, begin: String) = Lesson("Предмет $begin", "Лекция", date, begin, "11:35", "624/3", "")
+
+    @Test fun firstPairOfEachDayMinusLead() {
+        // Среда, 25 ноября 2026, 06:00.
+        val now = java.time.LocalDateTime.of(2026, 11, 25, 6, 0)
+        val lessons = listOf(
+            l("2026-11-24", "08:30"),                        // вчера — не ставим
+            l("2026-11-25", "10:10"), l("2026-11-25", "08:30"), // сегодня: первая 08:30
+            l("2026-11-26", "13:35"),
+            l("2026-12-01", "08:30"),                        // вторник следующей недели — в пределах 7 дней
+            l("2026-12-03", "08:30"),                        // через 8 дней — уже нет
+        )
+        val w = WakeAlarms.plan(lessons, now, 90)
+        assertEquals(listOf("2026-11-25 07:00", "2026-11-26 12:05", "2026-12-01 07:00"), w.map { "${it.date} ${it.at}" })
+    }
+
+    @Test fun passedTodayMovesToSameDayNextWeek() {
+        // Среда 25-го, 9:00: сегодняшний будильник прошёл — берём среду 2 декабря.
+        val now = java.time.LocalDateTime.of(2026, 11, 25, 9, 0)
+        val lessons = listOf(l("2026-11-25", "08:30"), l("2026-12-02", "10:10"))
+        assertEquals(listOf("2026-12-02 08:40"), WakeAlarms.plan(lessons, now, 90).map { "${it.date} ${it.at}" })
+    }
+
+    @Test fun skipsPassedAndPreviousDay() {
+        val now = java.time.LocalDateTime.of(2026, 11, 25, 7, 30)
+        val lessons = listOf(l("2026-11-25", "08:30"), l("2026-11-26", "01:00"))
+        // Сегодня будить уже поздно (7:00 прошло), завтрашняя пара в 01:00 — будильник выпал бы на вчера.
+        assertTrue(WakeAlarms.plan(lessons, now, 90).isEmpty())
+    }
+}
+
+class WidgetAndSeasonTest {
+    @Test fun widgetFitsWholeDay() {
+        // Высокий виджет: обычные строки.
+        assertEquals(6 to false, NowWidget.layoutFor(420, 4))
+        // Невысокий (около 4×2): 4 пары не влезают обычными — плотные строки, ровно день.
+        assertEquals(4 to true, NowWidget.layoutFor(170, 4))
+        // Пара одна — плотный режим не нужен.
+        assertEquals(1 to false, NowWidget.layoutFor(120, 1))
+    }
+
+    @Test fun newYearSeason() {
+        assertTrue(SnowView.season(java.time.LocalDate.of(2026, 12, 1)))
+        assertTrue(SnowView.season(java.time.LocalDate.of(2027, 1, 14)))
+        assertFalse(SnowView.season(java.time.LocalDate.of(2027, 1, 15)))
+        assertFalse(SnowView.season(java.time.LocalDate.of(2026, 11, 26)))
+    }
+}
+
 class ConsultationTest {
     private fun l(type: String) = Lesson("Психосоматика", type, "2026-12-20", "10:00", "11:35", "624/3", "")
 

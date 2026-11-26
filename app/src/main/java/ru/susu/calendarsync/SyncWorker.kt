@@ -36,10 +36,12 @@ object Syncer {
         val store = Store(context)
         val prefs = Prefs(context)
         val lessons = Session.call(context) { SusuApi.schedule(it, s.kind, s.id) }
+        val cached = store.lessons(s.uid)
+        val today = LocalDate.now(CalendarSync.SUSU_ZONE).toString()
+        if (looksBroken(cached, lessons, today)) throw java.io.IOException("Портал прислал пустое расписание, оставил прежнее")
 
         if (s.monitor && store.hasCache(s.uid)) {
-            val today = LocalDate.now(CalendarSync.SUSU_ZONE).toString()
-            val changes = diffLessons(store.lessons(s.uid), lessons, today)
+            val changes = diffLessons(cached, lessons, today)
             if (changes.isNotEmpty()) {
                 val source = if (s.own) "Моё расписание" else s.label
                 ChangeLog(context).add(ChangeSet(System.currentTimeMillis(), source, changes))
@@ -52,6 +54,12 @@ object Syncer {
         syncCalendar(context, s, lessons)
         return lessons
     }
+
+    /**
+     * Портал вернул пустое расписание, хотя впереди были пары: почти наверняка сбой. Не сохраняем его,
+     * иначе все пары «отменятся», придут уведомления и опустеет календарь телефона.
+     */
+    fun looksBroken(old: List<Lesson>, new: List<Lesson>, today: String) = new.isEmpty() && old.any { it.date >= today }
 
     /** Переносит пары расписания в его календарь (или убирает календарь). Консультации — по настройке. */
     private fun syncCalendar(context: Context, s: SavedSchedule, lessons: List<Lesson>) {
@@ -75,12 +83,13 @@ object Syncer {
     /** Загружает оценки текущего семестра и сообщает о новых КРМ и изменениях баллов. */
     fun syncGrades(context: Context, term: Int? = null): GradesSnapshot {
         val gs = GradesStore(context)
-        val snapshot = Session.call(context) { token ->
+        val fetched = Session.call(context) { token ->
             val (current, count) = Grades.studyPlan(token)
             Prefs(context).currentTerm = current
             Grades.fetch(token, term ?: current, count)
         }
-        val old = gs.load(snapshot.term)
+        val old = gs.load(fetched.term)
+        val snapshot = Grades.carryOver(old, fetched)
         if (old != null) {
             val changes = Grades.diff(old, snapshot)
             if (changes.isNotEmpty()) {
@@ -96,7 +105,7 @@ object Syncer {
     suspend fun run(context: Context): String = withContext(Dispatchers.IO) {
         val prefs = Prefs(context)
         check(prefs.hasCredentials) { "Введите логин и пароль" }
-        val auth = Session.login(context, force = true)
+        val auth = Session.login(context)
 
         val errors = ArrayList<String>()
         var lessonsCount = 0
@@ -109,7 +118,7 @@ object Syncer {
                 errors += "${s.label}: ${e.message}"
             }
         }
-        if (prefs.monitorGrades && !auth.isInstructor) {
+        if (!auth.isInstructor) {
             try {
                 syncGrades(context)
             } catch (e: Exception) {

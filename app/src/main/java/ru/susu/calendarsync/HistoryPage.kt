@@ -21,11 +21,7 @@ class HistoryPage : Page() {
         val ctx = requireContext()
         val log = ChangeLog(ctx)
         val root = ctx.vertical(16)
-        root.addView(ctx.textButton("‹ Назад") { parentFragmentManager.popBackStack() }.apply {
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-        })
+        root.addView(backButton("Назад"))
         root.addView(ctx.title("Изменения"))
 
         val all = log.load()

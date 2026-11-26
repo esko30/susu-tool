@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
 import android.view.Gravity
+import android.view.View
+import android.widget.LinearLayout
 import android.widget.FrameLayout
 import com.google.android.material.progressindicator.CircularProgressIndicator
 
@@ -33,6 +35,23 @@ class RatingRing(context: Context, private val sizePx: Int) : FrameLayout(contex
     init {
         addView(ring, LayoutParams(sizePx, sizePx))
         addView(label, LayoutParams(sizePx, sizePx))
+    }
+
+    companion object {
+        /** Кольцо с подписью снизу: «текущий», «итоговый». */
+        fun labeled(context: Context, size: Int, r: Double?, credit: Boolean, caption: String): Pair<View, RatingRing> {
+            val ring = RatingRing(context, size).apply {
+                this.credit = credit
+                layoutParams = LinearLayout.LayoutParams(size, size)
+                set(r)
+            }
+            val box = context.vertical().apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                addView(ring)
+                addView(context.secondary(caption, 11f).apply { gravity = Gravity.CENTER; setPadding(0, context.dp(2), 0, 0) })
+            }
+            return box to ring
+        }
     }
 
     /** Зачёт: набрано 60 (с округлением в пользу студента) — сразу зелёный, без деления на 4/5; меньше — как обычно. */

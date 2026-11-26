@@ -4,15 +4,9 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 
-/** Текущее время для расписания и виджета; [demo] подменяет его (идёт дальше от заданной точки). */
+/** Текущее время в часовом поясе ЮУрГУ: для ленты и виджетов. */
 object Clock {
-    @Volatile private var demo: LocalDateTime? = null
-    @Volatile private var setAt = 0L
-
-    fun setDemo(at: LocalDateTime?) { demo = at; setAt = System.currentTimeMillis() }
-
-    fun now(): LocalDateTime = demo?.plusSeconds((System.currentTimeMillis() - setAt) / 1000)
-        ?: LocalDateTime.now(CalendarSync.SUSU_ZONE)
+    fun now(): LocalDateTime = LocalDateTime.now(CalendarSync.SUSU_ZONE)
 
     fun today(): LocalDate = now().toLocalDate()
 }
