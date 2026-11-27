@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
@@ -1007,17 +1008,17 @@ class SchedulePage : Page() {
     }
 
     /**
-     * Галочка в шапке: «Смотрю посещаемость…» — ищем открытые отметки в Moodle.
-     * Открыта на идущей паре — на карточке появляется «Отметиться в Moodle». Открыта, но в другое время —
-     * окно со списком и кнопкой «Отметиться» у каждой. Ничего — так и пишем.
+     * Галочка в шапке: затемнённый экран «Смотрю посещаемость…» и поиск открытых отметок в Moodle.
+     * Открыта на идущей паре — на её карточке появляется мигающая «Отметиться в Moodle». Открыта в другое
+     * время — список. Нет открытых — короткая подпись «Открытых отметок нет». Отметки на парах бывают редко, поэтому Moodle — только по нажатию.
      */
     private fun checkMoodleNow() {
-        val ctx = context ?: return
+        val act = activity ?: return
         if (moodleChecking) return
         moodleChecking = true
-        val app = ctx.applicationContext
-        android.widget.Toast.makeText(ctx, "Смотрю посещаемость…", android.widget.Toast.LENGTH_SHORT).show()
-        background({ Moodle.openSessions(app, force = true) }) { r ->
+        val app = act.applicationContext
+        val hide = act.showBusy("Смотрю посещаемость в Moodle…", "Это может занять до минуты")
+        moodleWork(hide, { Moodle.openSessions(app, force = true) }) { r ->
             moodleChecking = false
             r.onFailure { android.widget.Toast.makeText(app, errorText(it), android.widget.Toast.LENGTH_LONG).show() }
             r.onSuccess { found ->
@@ -1029,11 +1030,26 @@ class SchedulePage : Page() {
                 render()
                 when {
                     onCards.isNotEmpty() -> android.widget.Toast.makeText(app,
-                        "Можно отметиться: " + onCards.joinToString(", ") { it.first.subject }, android.widget.Toast.LENGTH_LONG).show()
+                        "Открыта отметка: " + onCards.joinToString(", ") { it.first.subject } + ". Нажмите «Отметиться в Moodle» на карточке",
+                        android.widget.Toast.LENGTH_LONG).show()
                     elsewhere.isNotEmpty() -> showOpenElsewhere(elsewhere)
-                    else -> android.widget.Toast.makeText(app, "Открытых отметок сейчас нет", android.widget.Toast.LENGTH_LONG).show()
+                    // Открытых отметок нет — короткая подпись внизу, без окон.
+                    else -> android.widget.Toast.makeText(app, "Открытых отметок нет", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
+        }
+    }
+
+    /**
+     * Запрос к Moodle под затемнением. Затемнение убирается всегда, даже если пока шла загрузка
+     * ушли с ленты на другую вкладку; результат показывается, только если лента ещё на экране.
+     */
+    private fun <T> moodleWork(hide: () -> Unit, work: suspend () -> T, done: (Result<T>) -> Unit) {
+        val act = activity ?: return hide()
+        act.lifecycleScope.launch {
+            val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { work() } }
+            hide()
+            if (view != null && isAdded) done(r) else moodleChecking = false
         }
     }
 
@@ -1058,38 +1074,37 @@ class SchedulePage : Page() {
             .setNegativeButton("Закрыть", null).show()
     }
 
-    /** Кнопка «Отметиться» на карточке, если в Moodle открыта отметка на это время; после отметки — «Отмечено». */
+    /**
+     * Кнопка «Отметиться в Moodle» — только на паре, для которой галочка нашла открытую отметку; мягко мигает.
+     * После отметки из приложения — «✓ Отмечено в Moodle».
+     */
     private fun moodleButton(l: Lesson): View? {
         val ctx = requireContext()
         if (l.date != Clock.today().toString()) return null
         val group = Profile.group(ctx)
-        val open = Moodle.matchFor(l, moodleOpen, group)
-        val done = moodleOpen.isEmpty() && moodleMarked.isNotEmpty() &&
-            Moodle.matchFor(l, moodleMarkedOpen, group) != null
-        if (open == null) return if (done) ctx.secondary("✓ Отмечено в Moodle", 13f).apply {
+        if (Moodle.matchFor(l, moodleMarkedOpen, group) != null) return ctx.secondary("✓ Отмечено в Moodle", 13f).apply {
             setTextColor(android.graphics.Color.rgb(67, 175, 108)); setPadding(0, ctx.dp(6), 0, 0)
-        } else null
-        val marking = open.sessid in moodleMarking
-        return ctx.button(if (marking) "Отмечаю…" else "Отметиться в Moodle") { if (open.sessid !in moodleMarking) markMoodle(open, null) }.apply {
-            isEnabled = !marking
+        }
+        val open = Moodle.matchFor(l, moodleOpen, group) ?: return null
+        return ctx.button("Отметиться в Moodle") { markMoodle(open, null) }.apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 .apply { topMargin = ctx.dp(8) }
+            startAnimation(android.view.animation.AlphaAnimation(1f, 0.45f).apply {
+                duration = 850
+                repeatMode = android.view.animation.Animation.REVERSE
+                repeatCount = android.view.animation.Animation.INFINITE
+            })
         }
     }
 
     /** Отметки, поставленные из приложения, — чтобы показать «Отмечено» на нужной карточке. */
     private val moodleMarkedOpen = ArrayList<Moodle.Open>()
 
-    /** Занятия, отметка на которых сейчас отправляется. */
-    private val moodleMarking = HashSet<String>()
-
     private fun markMoodle(o: Moodle.Open, password: String?, statusId: String? = null) {
-        val ctx = requireContext()
-        val app = ctx.applicationContext
-        moodleMarking += o.sessid
-        render()
-        background({ Moodle.markPresent(app, o, password, statusId) }) { r ->
-            moodleMarking -= o.sessid
+        val act = activity ?: return
+        val app = act.applicationContext
+        val hide = act.showBusy("Отмечаю в Moodle…", "Это может занять до минуты")
+        moodleWork(hide, { Moodle.markPresent(app, o, password, statusId) }) { r ->
             val res = r.getOrElse { Moodle.Result.Failed(errorText(it)) }
             when (res) {
                 Moodle.Result.Marked -> {
@@ -1097,15 +1112,12 @@ class SchedulePage : Page() {
                     moodleMarkedOpen += o
                     moodleOpen = moodleOpen.filter { it.sessid != o.sessid }
                     requireView().haptic()
-                    android.widget.Toast.makeText(app, "Отмечено в Moodle", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(app, "Готово, отмечено в Moodle", android.widget.Toast.LENGTH_SHORT).show()
                     render()
                 }
-                Moodle.Result.NeedPassword -> { render(); askMoodlePassword(o, statusId) }
-                is Moodle.Result.ChooseStatus -> { render(); chooseMoodleStatus(o, password, res.statuses) }
-                is Moodle.Result.Failed -> {
-                    render()
-                    android.widget.Toast.makeText(app, res.message, android.widget.Toast.LENGTH_LONG).show()
-                }
+                Moodle.Result.NeedPassword -> askMoodlePassword(o, statusId)
+                is Moodle.Result.ChooseStatus -> chooseMoodleStatus(o, password, res.statuses)
+                is Moodle.Result.Failed -> android.widget.Toast.makeText(app, res.message, android.widget.Toast.LENGTH_LONG).show()
             }
         }
     }

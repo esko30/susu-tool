@@ -225,3 +225,42 @@ fun View.padForSystemBars() {
     }
     androidx.core.view.ViewCompat.requestApplyInsets(this)
 }
+
+/**
+ * Затемнение экрана с колёсиком и подписью, пока идёт долгая операция; касания под ним не проходят.
+ * Возвращает функцию, которая убирает затемнение.
+ */
+fun android.app.Activity.showBusy(title: String, hint: String): () -> Unit {
+    val decor = window.decorView as ViewGroup
+    val overlay = android.widget.FrameLayout(this).apply {
+        setBackgroundColor(0xAA000000.toInt())
+        isClickable = true
+        isFocusable = true
+        alpha = 0f
+        val box = vertical().apply {
+            gravity = android.view.Gravity.CENTER
+            setPadding(dp(32), 0, dp(32), 0)
+            addView(com.google.android.material.progressindicator.CircularProgressIndicator(this@showBusy).apply {
+                isIndeterminate = true
+                setIndicatorColor(android.graphics.Color.WHITE)
+            })
+            addView(text(title, 17f, bold = true).apply {
+                setTextColor(android.graphics.Color.WHITE); gravity = android.view.Gravity.CENTER; setPadding(0, dp(18), 0, 0)
+            })
+            addView(text(hint, 14f).apply {
+                setTextColor(0xCCFFFFFF.toInt()); gravity = android.view.Gravity.CENTER; setPadding(0, dp(6), 0, 0)
+            })
+        }
+        addView(box, android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER))
+    }
+    decor.addView(overlay, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+    overlay.animate().alpha(1f).setDuration(150).start()
+    var removed = false
+    return {
+        if (!removed) {
+            removed = true
+            overlay.animate().alpha(0f).setDuration(150).withEndAction { decor.removeView(overlay) }.start()
+        }
+    }
+}

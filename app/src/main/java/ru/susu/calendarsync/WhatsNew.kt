@@ -28,7 +28,7 @@ object WhatsNew {
     private val RELEASES = listOf(
         Release("2.7", listOf(
             Feature(R.drawable.ic_attendance, GREEN, "Отметка в Moodle",
-                "Нажмите галочку рядом с колокольчиком. Если в Moodle открыта посещаемость, на карточке пары появится «Отметиться в Moodle». Вход тот же, что на портале."),
+                "Нажмите галочку рядом с колокольчиком. Если в Moodle открыта посещаемость, на карточке пары замигает «Отметиться в Moodle». Вход тот же, что на портале."),
         )),
         Release("2.6", listOf(
             Feature(R.drawable.ic_today, BLUE, "Новогоднее оформление",
