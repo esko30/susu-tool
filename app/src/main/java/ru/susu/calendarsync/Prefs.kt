@@ -41,6 +41,11 @@ class Prefs(context: Context) {
         get() = sp.getString("password", "").orEmpty()
         set(v) = sp.edit { putString("password", v) }
 
+    /** Токен мобильного приложения Moodle (edu.susu.ru) для отметки посещаемости. */
+    var moodleToken: String
+        get() = sp.getString("moodleToken", "").orEmpty()
+        set(v) = sp.edit { putString("moodleToken", v) }
+
     var displayName: String
         get() = sp.getString("displayName", "").orEmpty()
         set(v) = sp.edit { putString("displayName", v) }

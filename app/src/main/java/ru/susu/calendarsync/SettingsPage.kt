@@ -224,7 +224,7 @@ class SettingsPage : Page() {
                 render()
                 return@button
             }
-            if (login != prefs.login || pass != prefs.password) Session.reset()
+            if (login != prefs.login || pass != prefs.password) { Session.reset(); Moodle.clear(ctx) }
             prefs.login = login
             prefs.password = pass
             main.withPermissions { syncAll() }
@@ -414,6 +414,7 @@ class SettingsPage : Page() {
                     Planner.clear(app)
                     Profile.clear(app)
                     MyLessons.clear(app)
+                    Moodle.clear(app)
                     Prefs(app).clear()
                     Session.reset()
                 }) {

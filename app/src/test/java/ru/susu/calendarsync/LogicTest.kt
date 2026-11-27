@@ -355,6 +355,113 @@ class SafeguardTest {
     }
 }
 
+class MoodleTest {
+    private val activity = Moodle.Activity("2026/2027 Общий психологический практикум (очная, Пономарева И.В., 7 семестр)",
+        "Посещаемость", "8856469", "220914")
+
+    // Экран «Посещаемости» edu.susu.ru, когда отметка открыта (сокращён).
+    private val view = """
+        <div class="attendance_mobile_view_page">
+            <ion-item>
+                <ion-label>
+                    <h2>27.11.26 (пт) 09:45 - 11:20</h2>
+                    <h3>Глобальная группа 2023-ВМБШ-О-21-КП</h3>
+                    <ion-button core-site-plugins-new-content component="mod_attendance" method="mobile_user_form" [args]="{cmid: 8856469, courseid: 220914, sessid: 8118476, timestamp: 1795757884}" [preSets]="{getFromCache: 0, saveToCache: 0}" refreshOnSuccess="true" samePage="true">
+                        {{ 'plugin.mod_attendance.submitattendance' | translate }}
+                    </ion-button>
+                </ion-label>
+            </ion-item>
+            <ion-item><ion-label><ion-grid><ion-row><ion-col>20</ion-col></ion-row></ion-grid></ion-label></ion-item>
+        </div>"""
+
+    // Форма отметки (сокращена).
+    private val form = """
+        <ion-radio-group [(ngModel)]="status" name="status">
+            <ion-item class="ion-text-wrap">
+                <ion-label>Присутствовал</ion-label>
+                <ion-radio slot="end" value="921871"></ion-radio>
+            </ion-item>
+            <ion-item class="ion-text-wrap">
+                <ion-label>Не был</ion-label>
+                <ion-radio slot="end" value="921870"></ion-radio>
+            </ion-item>
+        </ion-radio-group>"""
+
+    @Test fun parsesOpenSession() {
+        val open = Moodle.parseOpen(activity, view)
+        assertEquals(1, open.size)
+        val o = open[0]
+        assertEquals("8118476", o.sessid)
+        assertEquals(java.time.LocalDate.of(2026, 11, 27), o.date)
+        assertEquals(java.time.LocalTime.of(9, 45), o.begin)
+        assertEquals(java.time.LocalTime.of(11, 20), o.end)
+        // Без кнопки отметки — ничего не открыто.
+        assertTrue(Moodle.parseOpen(activity, "<ion-item><h2>27.11.26 (пт) 09:45 - 11:20</h2></ion-item>").isEmpty())
+    }
+
+    @Test fun toleratesMarkupChanges() {
+        // Атрибуты в другом порядке, четырёхзначный год, длинное тире.
+        val alt = """<ion-item><h2>27.11.2026 (пт) 9:45 — 11:20</h2>
+            <ion-button [args]="{sessid: 55, cmid: 1, courseid: 2}" component="mod_attendance" method="mobile_user_form">Отметиться</ion-button></ion-item>"""
+        val o = Moodle.parseOpen(activity, alt).single()
+        assertEquals("55", o.sessid)
+        assertEquals(java.time.LocalTime.of(9, 45), o.begin)
+        // Без времени — дата всё равно разбирается, время пустое.
+        val noTime = """<ion-item><h2>27.11.26</h2><ion-button method="mobile_user_form" [args]="{sessid: 7}"></ion-button></ion-item>"""
+        assertNull(Moodle.parseOpen(activity, noTime).single().begin)
+        // Кнопка без номера занятия — не открытая отметка.
+        assertTrue(Moodle.parseOpen(activity, """<ion-item><h2>27.11.26</h2><ion-button method="mobile_user_form" [args]="{cmid: 1}"></ion-button></ion-item>""").isEmpty())
+    }
+
+    @Test fun presentStatusOnlyWhenSure() {
+        // Реальная форма edu.susu.ru.
+        assertEquals("921871", Moodle.presentStatus(listOf("Присутствовал" to "921871", "Уважительная причина" to "921868", "Не был" to "921870"))?.second)
+        // Отрицания никогда не выбираются, даже если идут первыми.
+        assertEquals("2", Moodle.presentStatus(listOf("Не присутствовал" to "1", "Присутствовал" to "2"))?.second)
+        assertNull(Moodle.presentStatus(listOf("Не присутствовал" to "1", "Отсутствовал" to "2")))
+        assertEquals("1", Moodle.presentStatus(listOf("Был на занятии" to "1", "Не был" to "2"))?.second)
+        // Непонятные подписи — не угадываем.
+        assertNull(Moodle.presentStatus(listOf("+" to "9", "−" to "8")))
+        assertNull(Moodle.presentStatus(emptyList()))
+    }
+
+    @Test fun currentCourses() {
+        val today = java.time.LocalDate.of(2026, 11, 27)
+        assertTrue(Moodle.isCurrent("2026/2027 Психосоматика (очная)", 0, today))
+        assertFalse(Moodle.isCurrent("2025/2026 Логика (очная)", 0, today))
+        assertFalse(Moodle.isCurrent("Внеучебная деятельность", 0, today))
+    }
+
+    @Test fun parsesStatuses() {
+        assertEquals(listOf("Присутствовал" to "921871", "Не был" to "921870"), Moodle.parseStatuses(form))
+        assertFalse(Moodle.needsPassword(form))
+        assertTrue(Moodle.needsPassword(form + """<ion-input type="password" name="studentpass">"""))
+    }
+
+    @Test fun matchesByTimeThenName() {
+        val o = Moodle.parseOpen(activity, view)[0]
+        val pair = Lesson("Общий психологический практикум", "Практические занятия", "2026-11-27", "09:45", "11:20", "251/2", "")
+        assertEquals(o, Moodle.matchFor(pair, listOf(o)))
+        // Другое время — не та пара.
+        assertNull(Moodle.matchFor(pair.copy(beginTime = "13:35", endTime = "15:10"), listOf(o)))
+        // Два открытых занятия в одно время — выбирается курс, похожий по названию.
+        val other = o.copy(course = "2026/2027 Психосоматика (очная)", sessid = "1")
+        assertEquals(o, Moodle.matchFor(pair, listOf(other, o)))
+        assertEquals("2026/2027", Moodle.studyYear(java.time.LocalDate.of(2026, 11, 27)))
+        // Лекция и семинары разных групп в одно время: тип пары и группа решают.
+        val lecture = o.copy(name = "Посещаемость Лекции", sessid = "L")
+        val sem420 = o.copy(name = "Посещаемость Семинар МБ-420", sessid = "S420")
+        val sem421 = o.copy(name = "Посещаемость Семинар МБ-421", sessid = "S421")
+        val all = listOf(lecture, sem421, sem420)
+        assertEquals("S420", Moodle.matchFor(pair.copy(eventType = "Практические занятия и семинары"), all, "МБ-420")?.sessid)
+        assertEquals("L", Moodle.matchFor(pair.copy(eventType = "Лекция"), all, "МБ-420")?.sessid)
+        // Занятие 09:00–12:00 пересекается с парой 09:45–11:20.
+        val long = o.copy(begin = java.time.LocalTime.of(9, 0), end = java.time.LocalTime.of(12, 0))
+        assertEquals(long, Moodle.matchFor(pair, listOf(long)))
+        assertEquals("2025/2026", Moodle.studyYear(java.time.LocalDate.of(2026, 3, 1)))
+    }
+}
+
 class WakeAlarmsTest {
     private fun l(date: String, begin: String) = Lesson("Предмет $begin", "Лекция", date, begin, "11:35", "624/3", "")
 

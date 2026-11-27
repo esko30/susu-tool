@@ -11,3 +11,9 @@ local.properties
 *.jks
 *.keystore
 keystore.properties
+
+# Moodle: логин/пароль и отчёт прототипа — только локально
+tools/moodle_login.txt
+tools/moodle_report.json
+__pycache__/
+tools/moodle_mark_result.json

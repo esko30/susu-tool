@@ -86,6 +86,12 @@ class SchedulePage : Page() {
     private var display = DisplayOptions()
     /** Занятия открытого расписания и записи планера по парам — для карточек и панели «В планер». */
     private var feedLessons: List<Lesson> = emptyList()
+
+    /** Открытые сейчас отметки в Moodle (по нажатию галочки в шапке) и идёт ли проверка. */
+    private var moodleOpen: List<Moodle.Open> = emptyList()
+    private var moodleChecking = false
+    /** Занятия Moodle, на которых уже отметились из приложения. */
+    private val moodleMarked = HashSet<String>()
     private var plannerByLesson: Map<String, List<PlannerItem>> = emptyMap()
 
 
@@ -158,6 +164,7 @@ class SchedulePage : Page() {
         selector.tag = "tour_selector"
         row.addView(selector.weight())
         if (Duty.active(ctx)) row.addView(DutySheet.button(ctx) { DutySheet.show(ctx) { render() } })
+        if (Prefs(ctx).hasCredentials) row.addView(iconButton(R.drawable.ic_attendance, "Посещаемость в Moodle") { checkMoodleNow() })
         row.addView(historyButton())
         lateinit var more: View
         more = iconButton(R.drawable.ic_more, "Ещё") { showMenu(more, current, isTemp, store) }.apply { tag = "tour_more" }
@@ -958,6 +965,8 @@ class SchedulePage : Page() {
                 }
             }
         }
+        // Любая ошибка Moodle не должна ломать ленту.
+        runCatching { moodleButton(l) }.getOrNull()?.let { views += it }
         views.forEach(content::addView)
 
         val row = LinearLayout(ctx).apply {
@@ -995,6 +1004,135 @@ class SchedulePage : Page() {
             clipToOutline = true
             if (done) alpha = 0.55f
         }
+    }
+
+    /**
+     * Галочка в шапке: «Смотрю посещаемость…» — ищем открытые отметки в Moodle.
+     * Открыта на идущей паре — на карточке появляется «Отметиться в Moodle». Открыта, но в другое время —
+     * окно со списком и кнопкой «Отметиться» у каждой. Ничего — так и пишем.
+     */
+    private fun checkMoodleNow() {
+        val ctx = context ?: return
+        if (moodleChecking) return
+        moodleChecking = true
+        val app = ctx.applicationContext
+        android.widget.Toast.makeText(ctx, "Смотрю посещаемость…", android.widget.Toast.LENGTH_SHORT).show()
+        background({ Moodle.openSessions(app, force = true) }) { r ->
+            moodleChecking = false
+            r.onFailure { android.widget.Toast.makeText(app, errorText(it), android.widget.Toast.LENGTH_LONG).show() }
+            r.onSuccess { found ->
+                moodleOpen = found.filter { it.sessid !in moodleMarked }
+                val group = Profile.group(app)
+                val today = Clock.today().toString()
+                val onCards = feedLessons.filter { it.date == today }.mapNotNull { l -> Moodle.matchFor(l, moodleOpen, group)?.let { l to it } }
+                val elsewhere = moodleOpen.filter { o -> onCards.none { it.second.sessid == o.sessid } }
+                render()
+                when {
+                    onCards.isNotEmpty() -> android.widget.Toast.makeText(app,
+                        "Можно отметиться: " + onCards.joinToString(", ") { it.first.subject }, android.widget.Toast.LENGTH_LONG).show()
+                    elsewhere.isNotEmpty() -> showOpenElsewhere(elsewhere)
+                    else -> android.widget.Toast.makeText(app, "Открытых отметок сейчас нет", android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    /** Отметка открыта, но ни одна пара в ленте с ней не совпала по времени — даём отметиться из списка. */
+    private fun showOpenElsewhere(list: List<Moodle.Open>) {
+        val ctx = context ?: return
+        val box = ctx.vertical(20)
+        box.addView(ctx.secondary("Время этих занятий не совпало с парами в ленте. Проверьте, что это ваше занятие.", 13f))
+        lateinit var dialog: androidx.appcompat.app.AlertDialog
+        for (o in list) {
+            val row = ctx.vertical().apply { setPadding(0, ctx.dp(12), 0, 0) }
+            row.addView(ctx.text(o.course.replace(Regex("""^\s*\d{4}\s*/\s*\d{4}\s*"""), "").substringBefore("("), 15f, bold = true))
+            val time = listOfNotNull(o.begin?.toString(), o.end?.toString()).joinToString("–")
+            row.addView(ctx.secondary(listOf(o.name, time).filter { it.isNotBlank() }.joinToString(" · "), 13f))
+            row.addView(ctx.button("Отметиться") { dialog.dismiss(); markMoodle(o, null) }.apply {
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    .apply { topMargin = ctx.dp(6) }
+            })
+            box.addView(row)
+        }
+        dialog = MaterialAlertDialogBuilder(ctx).setTitle("Открыта отметка").setView(ctx.scroll(box))
+            .setNegativeButton("Закрыть", null).show()
+    }
+
+    /** Кнопка «Отметиться» на карточке, если в Moodle открыта отметка на это время; после отметки — «Отмечено». */
+    private fun moodleButton(l: Lesson): View? {
+        val ctx = requireContext()
+        if (l.date != Clock.today().toString()) return null
+        val group = Profile.group(ctx)
+        val open = Moodle.matchFor(l, moodleOpen, group)
+        val done = moodleOpen.isEmpty() && moodleMarked.isNotEmpty() &&
+            Moodle.matchFor(l, moodleMarkedOpen, group) != null
+        if (open == null) return if (done) ctx.secondary("✓ Отмечено в Moodle", 13f).apply {
+            setTextColor(android.graphics.Color.rgb(67, 175, 108)); setPadding(0, ctx.dp(6), 0, 0)
+        } else null
+        val marking = open.sessid in moodleMarking
+        return ctx.button(if (marking) "Отмечаю…" else "Отметиться в Moodle") { if (open.sessid !in moodleMarking) markMoodle(open, null) }.apply {
+            isEnabled = !marking
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .apply { topMargin = ctx.dp(8) }
+        }
+    }
+
+    /** Отметки, поставленные из приложения, — чтобы показать «Отмечено» на нужной карточке. */
+    private val moodleMarkedOpen = ArrayList<Moodle.Open>()
+
+    /** Занятия, отметка на которых сейчас отправляется. */
+    private val moodleMarking = HashSet<String>()
+
+    private fun markMoodle(o: Moodle.Open, password: String?, statusId: String? = null) {
+        val ctx = requireContext()
+        val app = ctx.applicationContext
+        moodleMarking += o.sessid
+        render()
+        background({ Moodle.markPresent(app, o, password, statusId) }) { r ->
+            moodleMarking -= o.sessid
+            val res = r.getOrElse { Moodle.Result.Failed(errorText(it)) }
+            when (res) {
+                Moodle.Result.Marked -> {
+                    moodleMarked += o.sessid
+                    moodleMarkedOpen += o
+                    moodleOpen = moodleOpen.filter { it.sessid != o.sessid }
+                    requireView().haptic()
+                    android.widget.Toast.makeText(app, "Отмечено в Moodle", android.widget.Toast.LENGTH_SHORT).show()
+                    render()
+                }
+                Moodle.Result.NeedPassword -> { render(); askMoodlePassword(o, statusId) }
+                is Moodle.Result.ChooseStatus -> { render(); chooseMoodleStatus(o, password, res.statuses) }
+                is Moodle.Result.Failed -> {
+                    render()
+                    android.widget.Toast.makeText(app, res.message, android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    /** Статус «присутствовал» в форме не узнан — показываем все статусы преподавателя, выбирает студент. */
+    private fun chooseMoodleStatus(o: Moodle.Open, password: String?, statuses: List<Pair<String, String>>) {
+        val ctx = context ?: return
+        MaterialAlertDialogBuilder(ctx)
+            .setTitle("Какой статус поставить?")
+            .setItems(statuses.map { it.first }.toTypedArray()) { _, i -> markMoodle(o, password, statuses[i].second) }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    /** Преподаватель задал пароль занятия — спрашиваем его. */
+    private fun askMoodlePassword(o: Moodle.Open, statusId: String?) {
+        val ctx = requireContext()
+        val input = com.google.android.material.textfield.TextInputEditText(ctx).apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+        }
+        MaterialAlertDialogBuilder(ctx)
+            .setTitle("Пароль занятия")
+            .setMessage("Преподаватель задал пароль для отметки. Его называют на паре.")
+            .setView(ctx.outlinedField("Пароль", input).apply { setPadding(ctx.dp(20), ctx.dp(8), ctx.dp(20), 0) })
+            .setPositiveButton("Отметиться") { _, _ -> markMoodle(o, input.text?.toString()?.trim().orEmpty(), statusId) }
+            .setNegativeButton("Отмена", null)
+            .show()
     }
 
     /** Делает текст нажимаемым с подсветкой нажатия. */
