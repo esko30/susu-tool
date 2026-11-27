@@ -26,6 +26,10 @@ object WhatsNew {
     private const val PINK = 0xFFD81B60.toInt()
 
     private val RELEASES = listOf(
+        Release("2.7.1", listOf(
+            Feature(R.drawable.ic_attendance, GREEN, "Отметка в Moodle понятнее",
+                "Пока приложение смотрит посещаемость, экран затемняется. Если отметка открыта, кнопка на карточке пары мигает, а если нет — так и написано."),
+        )),
         Release("2.7", listOf(
             Feature(R.drawable.ic_attendance, GREEN, "Отметка в Moodle",
                 "Нажмите галочку рядом с колокольчиком. Если в Moodle открыта посещаемость, на карточке пары замигает «Отметиться в Moodle». Вход тот же, что на портале."),

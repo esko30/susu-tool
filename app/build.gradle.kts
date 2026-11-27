@@ -24,8 +24,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // При каждом выпуске увеличивайте оба значения; тег релиза на GitHub — v<versionName>.
-        versionCode = 11
-        versionName = "2.7"
+        versionCode = 12
+        versionName = "2.7.1"
         // Репозиторий GitHub, где приложение ищет обновления (владелец/имя).
         buildConfigField("String", "UPDATE_REPO", "\"${project.findProperty("updateRepo") ?: ""}\"")
     }
